@@ -476,6 +476,32 @@ td input,td select{
         border:0;
     }
 }
+
+.manageRow{
+    display:grid;
+    grid-template-columns:1fr auto auto;
+    gap:10px;
+    align-items:center;
+    padding:10px;
+    border:1px solid #e5e7eb;
+    border-radius:8px;
+    margin-bottom:10px;
+    background:#fff;
+}
+.manageRow input{margin:0;}
+@media(max-width:700px){
+    .manageRow{grid-template-columns:1fr;}
+}
+
+
+/* Account management */
+.accountStatusActive{font-weight:700;}
+.accountStatusDeleted{font-weight:700;opacity:.65;}
+.accountGrid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px;}
+@media(max-width:900px){.accountGrid{grid-template-columns:1fr 1fr;}}
+@media(max-width:600px){.accountGrid{grid-template-columns:1fr;}}
+.accountNote{padding:12px 14px;border-radius:8px;background:#f1f5f9;margin-top:12px;}
+
 </style>
 </head>
 
@@ -580,12 +606,31 @@ td input,td select{
     >
         👷 Labourers
     </button>
+    <button
+        class="nav fieldNav"
+        onclick="showPage('workedAttendance',this)"
+        style="display:none"
+    >
+        👁️ Worked Labour Attendance
+    </button>
 
     <button
         class="nav adminNav"
         onclick="showPage('sites',this)"
     >
         🏢 Sites
+    </button>
+    <button
+        class="nav adminNav"
+        onclick="showPage('manage',this)"
+    >
+        ⚙️ Manage Sites & Groups
+    </button>
+    <button
+        class="nav adminNav"
+        onclick="showPage('accounts',this)"
+    >
+        👤 Manage Engineer & Supervisor Logins
     </button>
 
     <button
@@ -748,6 +793,8 @@ td input,td select{
             >
 
                 <option>All</option>
+                <option>All</option>
+                <option>All</option>
                 <option>RMS</option>
                 <option>Extruder</option>
                 <option>VTP New</option>
@@ -841,6 +888,10 @@ td input,td select{
                 <option value="PP">
                     PP
                 </option>
+                <option value="PPP">
+                    PPP
+                </option>
+                
 
                 <option value="NONE">
                     Not Marked
@@ -890,10 +941,8 @@ td input,td select{
                     <th>Labour Group</th>
                     <th>Site</th>
                     <th>In-Charge</th>
+                    <th>Date & Time Taken</th>
                     <th>Status</th>
-                    <th>In</th>
-                    <th>Out</th>
-                    <th>Days</th>
                     <th>OT</th>
 
                 </tr>
@@ -941,8 +990,8 @@ td input,td select{
     style="display:none"
 >
 
-    <h2>
-        Supervisor Attendance
+    <h2 id="fieldAttendanceTitle">
+        Attendance
     </h2>
 
     <label>
@@ -1014,6 +1063,8 @@ td input,td select{
     <br>
 
     PP = 2 Days
+    <br>
+    PPP = 3 Days
 
     <br>
 
@@ -1130,6 +1181,7 @@ td input,td select{
     </div>
 
 
+    <div id="sameDayAttendanceNotice" class="accountNote" style="display:none;margin-bottom:10px;"></div>
     <div
         id="dailySummary"
         class="summary"
@@ -1335,80 +1387,7 @@ td input,td select{
 </div>
 
 
-<div class="siteGrid">
-
-    <div class="siteCard">
-
-        <h2>RMS</h2>
-
-        <p>
-            Today's Labour
-        </p>
-
-        <div
-            id="rmsCount"
-            class="siteNumber"
-        >
-            0
-        </div>
-
-    </div>
-
-
-    <div class="siteCard">
-
-        <h2>Extruder</h2>
-
-        <p>
-            Today's Labour
-        </p>
-
-        <div
-            id="extruderCount"
-            class="siteNumber"
-        >
-            0
-        </div>
-
-    </div>
-
-
-    <div class="siteCard">
-
-        <h2>VTP New</h2>
-
-        <p>
-            Today's Labour
-        </p>
-
-        <div
-            id="vtpCount"
-            class="siteNumber"
-        >
-            0
-        </div>
-
-    </div>
-
-
-    <div class="siteCard">
-
-        <h2>RTP</h2>
-
-        <p>
-            Today's Labour
-        </p>
-
-        <div
-            id="rtpCount"
-            class="siteNumber"
-        >
-            0
-        </div>
-
-    </div>
-
-</div>
+<div id="siteGridDynamic" class="siteGrid"></div>
 
 </section>
 
@@ -1657,6 +1636,181 @@ td input,td select{
 
 </section>
 
+
+<!-- ================= ADMIN MANAGEMENT ================= -->
+<section id="manage" class="page">
+<div class="title">
+    <h1>⚙️ Manage Sites & Labour Groups</h1>
+    <p>Admin only — add, edit or delete sites and labour groups.</p>
+</div>
+
+<div class="panel">
+    <div class="panelHead">
+        <h2>🏢 Manage Sites</h2>
+    </div>
+    <div class="formGrid">
+        <div>
+            <label>New Site Name</label>
+            <input id="newSiteName" placeholder="Example: New Project">
+        </div>
+        <div style="display:flex;align-items:end;">
+            <button class="primary" onclick="addManagedSite()">➕ Add Site</button>
+        </div>
+    </div>
+    <div id="managedSitesList" style="margin-top:15px;"></div>
+</div>
+
+<div class="panel">
+    <div class="panelHead">
+        <h2>👥 Manage Labour Groups</h2>
+    </div>
+    <div class="formGrid">
+        <div>
+            <label>New Labour Group</label>
+            <input id="newGroupName" placeholder="Example: New Labour Group">
+        </div>
+        <div style="display:flex;align-items:end;">
+            <button class="primary" onclick="addManagedGroup()">➕ Add Labour Group</button>
+        </div>
+    </div>
+    <div id="managedGroupsList" style="margin-top:15px;"></div>
+</div>
+</section>
+
+
+<!-- ================= ADMIN ACCOUNT MANAGEMENT ================= -->
+<section id="accounts" class="page">
+<div class="title">
+    <h1>👤 Manage Engineer & Supervisor Logins</h1>
+    <p>Admin only — create, edit, disable or delete Engineer and Supervisor login accounts. You can type Engineer 7, Engineer 8, etc.</p>
+</div>
+
+<div class="panel">
+    <div class="panelHead">
+        <h2>➕ Add Login Account</h2>
+    </div>
+
+    <div class="accountGrid">
+        <div>
+            <label>Type / In-Charge</label>
+            <input id="newAccountRole" list="accountRoleSuggestions"
+                   placeholder="Example: Engineer 7">
+            <datalist id="accountRoleSuggestions">
+                <option value="Supervisor"></option>
+                <option value="Engineer 1"></option>
+                <option value="Engineer 2"></option>
+                <option value="Engineer 3"></option>
+                <option value="Engineer 4"></option>
+                <option value="Engineer 5"></option>
+                <option value="Engineer 6"></option>
+                <option value="Engineer 7"></option>
+                <option value="Engineer 8"></option>
+                <option value="Engineer 9"></option>
+            </datalist>
+        </div>
+
+        <div>
+            <label>In-Charge Name</label>
+            <input id="newAccountName" placeholder="Example: Engineer 1">
+        </div>
+
+        <div>
+            <label>Username</label>
+            <input id="newAccountUsername" autocomplete="off" placeholder="Enter username">
+        </div>
+
+        <div>
+            <label>Password</label>
+            <input id="newAccountPassword" type="password" autocomplete="new-password" placeholder="Enter password">
+        </div>
+    </div>
+
+    <div style="margin-top:14px;">
+        <button class="primary" onclick="addAccount()">➕ Add Account</button>
+    </div>
+
+    <div class="accountNote">
+        <b>Important:</b> Deleting a login does <u>not</u> delete or change any attendance.
+        Old attendance remains available in Admin reports and keeps the original In-Charge and Date & Time Taken.
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panelHead">
+        <h2>🔐 Current Login Accounts</h2>
+    </div>
+
+    <div id="accountsSummary" class="summaryBar">0 Accounts</div>
+
+    <div class="tableWrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Type</th>
+                    <th>In-Charge Name</th>
+                    <th>Username</th>
+                    <th>Password</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="accountsTable"></tbody>
+        </table>
+    </div>
+</div>
+</section>
+
+<!-- ================= FIELD VIEW-ONLY ATTENDANCE ================= -->
+<section id="workedAttendance" class="page">
+<div class="title">
+    <h1>👁️ Worked Labour Attendance</h1>
+    <p>View only — no Edit or Save option.</p>
+</div>
+
+<div class="panel">
+    <div class="filters">
+        <div>
+            <label>From Date</label>
+            <input id="workedFrom" type="date" onchange="renderWorkedAttendance()">
+        </div>
+        <div>
+            <label>To Date</label>
+            <input id="workedTo" type="date" onchange="renderWorkedAttendance()">
+        </div>
+        <div>
+            <label>Site</label>
+            <select id="workedSite" onchange="renderWorkedAttendance()"></select>
+        </div>
+        <div>
+            <label>Labour Group</label>
+            <select id="workedGroup" onchange="renderWorkedAttendance()"></select>
+        </div>
+    </div>
+    <div id="workedSummary" class="summary">0 Labour Attendance Records</div>
+    <div class="tableWrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Labourer</th>
+                    <th>Category</th>
+                    <th>Labour Group</th>
+                    <th>Site</th>
+                    <th>In-Charge</th>
+                    <th>Status</th>
+                    <th>Days</th>
+                    <th>In</th>
+                    <th>Out</th>
+                    <th>OT</th>
+                </tr>
+            </thead>
+            <tbody id="workedAttendanceTable"></tbody>
+        </table>
+    </div>
+</div>
+</section>
+
 </main>
 
 </div>
@@ -1871,86 +2025,12 @@ let attendance = JSON.parse(localStorage.getItem(ATT_KEY) || "[]");
 let currentUser = null;
 let cloudReady = false;
 
-const sites = ["RMS", "Extruder", "VTP New", "RTP"];
+let sites = ["RMS", "Extruder", "VTP New", "RTP"];
 
 const LOGIN = {
     admin:{ username:"admin", password:"Bmj9964", role:"Admin" },
     supervisor:{ username:"supervisor", password:"Super9964", role:"Supervisor" }
 };
-
-/* =========================================================
-DATE HELPERS + DATA NORMALIZATION
-========================================================= */
-
-function dateStr(date = new Date()){
-    const d = new Date(date);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-}
-
-function monday(){
-    const d = new Date();
-    d.setHours(0,0,0,0);
-    const day = d.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    d.setDate(d.getDate() + diff);
-    return dateStr(d);
-}
-
-function normalizeAttendance(items){
-    const map = new Map();
-
-    (Array.isArray(items) ? items : []).forEach(record => {
-        if(!record || !record.workerId || !record.date) return;
-        const key = `${record.workerId}__${record.date}`;
-        const old = map.get(key);
-
-        // Keep the newest copy when duplicate records already exist.
-        const oldTime = Number(old?.clientUpdatedAt || 0);
-        const newTime = Number(record.clientUpdatedAt || 0);
-
-        if(!old || newTime >= oldTime){
-            map.set(key, {
-                ...record,
-                ot: Number(record.ot || 0)
-            });
-        }
-    });
-
-    return Array.from(map.values())
-        .sort((a,b) => {
-            const byDate = String(a.date).localeCompare(String(b.date));
-            if(byDate !== 0) return byDate;
-            return String(a.workerId).localeCompare(String(b.workerId));
-        });
-}
-
-function normalizeAllData(){
-    const labourMap = new Map();
-    (Array.isArray(labourers) ? labourers : []).forEach(worker => {
-        if(worker && worker.id) labourMap.set(String(worker.id), worker);
-    });
-
-    labourers = Array.from(labourMap.values());
-    attendance = normalizeAttendance(attendance);
-}
-
-function mergeLabourers(localItems, cloudItems){
-    const map = new Map();
-
-    // Local first, then cloud overrides matching IDs.
-    (Array.isArray(localItems) ? localItems : []).forEach(worker => {
-        if(worker && worker.id) map.set(String(worker.id), worker);
-    });
-
-    (Array.isArray(cloudItems) ? cloudItems : []).forEach(worker => {
-        if(worker && worker.id) map.set(String(worker.id), worker);
-    });
-
-    return Array.from(map.values());
-}
 
 /* =========================================================
 LOAD FROM FIREBASE
@@ -1966,97 +2046,53 @@ async function loadFirebaseData(){
         const localLabourers = JSON.parse(localStorage.getItem(LABOUR_KEY) || "[]");
         const localAttendance = JSON.parse(localStorage.getItem(ATT_KEY) || "[]");
 
-        // Load each collection independently. The old code erased labourers
-        // when only the attendance document existed in Firebase.
-        const cloudLabourers =
-            labourSnap.exists && Array.isArray(labourSnap.data()?.items)
-                ? labourSnap.data().items
-                : null;
+        const cloudHasData = labourSnap.exists || attendanceSnap.exists;
 
-        const cloudAttendance =
-            attendanceSnap.exists && Array.isArray(attendanceSnap.data()?.items)
-                ? attendanceSnap.data().items
-                : null;
+        if(cloudHasData){
+            labourers = labourSnap.exists && Array.isArray(labourSnap.data().items)
+                ? labourSnap.data().items : [];
+            attendance = attendanceSnap.exists && Array.isArray(attendanceSnap.data().items)
+                ? attendanceSnap.data().items : [];
 
-        // Use Firebase when it contains data. If an old Firebase document is
-        // empty, keep the existing local data instead of wiping the application.
-        labourers = (Array.isArray(cloudLabourers) && cloudLabourers.length)
-            ? cloudLabourers
-            : localLabourers;
-
-        attendance = normalizeAttendance(
-            (Array.isArray(cloudAttendance) && cloudAttendance.length)
-                ? cloudAttendance
-                : localAttendance
-        );
-
-        normalizeAllData();
-
-        localStorage.setItem(LABOUR_KEY, JSON.stringify(labourers));
-        localStorage.setItem(ATT_KEY, JSON.stringify(attendance));
+            localStorage.setItem(LABOUR_KEY, JSON.stringify(labourers));
+            localStorage.setItem(ATT_KEY, JSON.stringify(attendance));
+        }else{
+            labourers = localLabourers;
+            attendance = localAttendance;
+        }
 
         cloudReady = true;
 
-        // Repair missing/empty cloud documents and de-duplicate old attendance.
-        const writes = [];
-
-        if((!Array.isArray(cloudLabourers) || cloudLabourers.length === 0) && labourers.length){
-            writes.push(
-                labourDoc.set({
-                    items: labourers,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, {merge:true})
-            );
+        if(!cloudHasData && (labourers.length || attendance.length)){
+            saveData();
         }
-
-        const cloudAttendanceCount = Array.isArray(cloudAttendance) ? cloudAttendance.length : 0;
-        if(cloudAttendanceCount !== attendance.length || cloudAttendanceCount === 0){
-            writes.push(
-                attendanceDoc.set({
-                    items: attendance,
-                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                }, {merge:true})
-            );
-        }
-
-        if(writes.length) await Promise.all(writes);
 
         labourDoc.onSnapshot(function(snap){
             if(!cloudReady || !snap.exists) return;
-            const data = snap.data() || {};
+            const data = snap.data();
             if(Array.isArray(data.items)){
                 labourers = data.items;
-                normalizeAllData();
                 localStorage.setItem(LABOUR_KEY, JSON.stringify(labourers));
                 if(currentUser) updateAll();
             }
-        }, function(error){
-            console.error("Labour snapshot error:", error);
         });
 
         attendanceDoc.onSnapshot(function(snap){
             if(!cloudReady || !snap.exists) return;
-            const data = snap.data() || {};
+            const data = snap.data();
             if(Array.isArray(data.items)){
                 attendance = data.items;
-                normalizeAllData();
                 localStorage.setItem(ATT_KEY, JSON.stringify(attendance));
                 if(currentUser) updateAll();
             }
-        }, function(error){
-            console.error("Attendance snapshot error:", error);
         });
 
         console.log("Firebase connected successfully.");
 
-        if(currentUser) updateAll();
-
     }catch(error){
         console.error("Firebase load error:", error);
+        alert("Firebase connection failed. Check Firestore Rules and internet connection. Error: " + error.message);
         cloudReady = true;
-        // Keep local data usable if Firebase is temporarily unavailable.
-        normalizeAllData();
-        if(currentUser) updateAll();
     }
 }
 
@@ -2065,29 +2101,29 @@ SAVE TO FIREBASE
 ========================================================= */
 
 function saveData(){
-    normalizeAllData();
-
     localStorage.setItem(LABOUR_KEY, JSON.stringify(labourers));
     localStorage.setItem(ATT_KEY, JSON.stringify(attendance));
 
-    if(!cloudReady) return Promise.resolve();
+    if(!cloudReady) return;
 
-    return Promise.all([
-        labourDoc.set({
-            items: labourers,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, {merge:true}),
-        attendanceDoc.set({
-            items: attendance,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, {merge:true})
-    ]).catch(function(error){
-        console.error("Firebase save error:", error);
-        alert("Could not save data to Firebase: " + error.message);
-        throw error;
+    labourDoc.set({
+        items: labourers,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true})
+    .catch(function(error){
+        console.error("Labour Firebase save error:", error);
+        alert("Could not save labour data to Firebase: " + error.message);
+    });
+
+    attendanceDoc.set({
+        items: attendance,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, {merge:true})
+    .catch(function(error){
+        console.error("Attendance Firebase save error:", error);
+        alert("Could not save attendance to Firebase: " + error.message);
     });
 }
-
 
 /* =========================================================
 ESCAPE
@@ -2110,13 +2146,13 @@ FIND RECORD
 ========================================================= */
 
 function findRecord(workerId,date){
-    for(let i = attendance.length - 1; i >= 0; i--){
-        const record = attendance[i];
-        if(record.workerId === workerId && record.date === date){
-            return record;
-        }
-    }
-    return null;
+
+    return attendance.find(
+        r =>
+            r.workerId === workerId &&
+            r.date === date
+    );
+
 }
 
 
@@ -3624,6 +3660,12 @@ function statusChanged(id){
 SAVE ATTENDANCE
 ========================================================= */
 
+function sameDayTotalForWorker(workerId,date){
+    return recordsForWorkerDate(workerId,date).reduce(
+        (sum,r)=>sum+Number(r.dutyCount||duty(r.status)||0),0
+    );
+}
+
 function saveAttendance(id){
 
     let site;
@@ -3767,10 +3809,7 @@ function saveAttendance(id){
         ),
 
         updatedBy:
-            currentUser.username,
-
-        clientUpdatedAt:
-            Date.now()
+            currentUser.username
 
     };
 
@@ -4514,12 +4553,6 @@ function generateWeekly(){
     head;
 
 
-    if(ids.size === 0){
-        document.getElementById("weeklyBody").innerHTML =
-            `<tr><td colspan="9" class="empty">No attendance records for this site and week.</td></tr>`;
-        return;
-    }
-
     document.getElementById(
         "weeklyBody"
     ).innerHTML =
@@ -4672,7 +4705,6 @@ function updateReports(){
         return;
     }
 
-    attendance = normalizeAttendance(attendance);
 
     document.getElementById(
         "reportPresent"
@@ -4977,6 +5009,1875 @@ document
     }
 );
 
+</script>
+
+
+<script>
+/* =========================================================
+BMJ FINAL UPDATE PACK
+All requested updates:
+- Admin + Supervisor + 6 Engineers
+- Shared Firebase
+- Admin management for Sites and Labour Groups
+- Add/Edit/Delete Sites and Groups (Admin only)
+- Admin labourer edit
+- P / A / HD / P1/2 / PP / PPP
+- Same labour can have multiple site records on one date
+- Supervisor/Engineer: Daily Attendance + Labourers + view-only Worked Attendance
+- Day-by-day worked labour counts
+- 7-Day All Sites + CSV
+========================================================= */
+
+const BMJ_DEFAULT_SITES=["RMS","Extruder","VTP New","RTP"];
+const BMJ_DEFAULT_GROUPS=["Roshan Labours","Hindi Labours","Kannada Labours","Old Rosh Labours"];
+
+sites=JSON.parse(localStorage.getItem("BMJ_SITES") || JSON.stringify(BMJ_DEFAULT_SITES));
+let labourGroups=JSON.parse(localStorage.getItem("BMJ_LABOUR_GROUPS") || JSON.stringify(BMJ_DEFAULT_GROUPS));
+
+const BMJ_LOGINS={
+    admin:{username:"admin",password:"Bmj9964",role:"Admin"},
+    supervisor:{username:"supervisor",password:"Super9964",role:"Supervisor"},
+    engineer1:{username:"engineer1",password:"Eng1@9964",role:"Engineer 1"},
+    engineer2:{username:"engineer2",password:"Eng2@9964",role:"Engineer 2"},
+    engineer3:{username:"engineer3",password:"Eng3@9964",role:"Engineer 3"},
+    engineer4:{username:"engineer4",password:"Eng4@9964",role:"Engineer 4"},
+    engineer5:{username:"engineer5",password:"Eng5@9964",role:"Engineer 5"},
+    engineer6:{username:"engineer6",password:"Eng6@9964",role:"Engineer 6"}
+};
+
+const BMJ_DEFAULT_ACCOUNTS=[
+    {id:"admin",username:"admin",password:"Bmj9964",role:"Admin",name:"Admin",active:true},
+    {id:"supervisor-default",username:"supervisor",password:"Super9964",role:"Supervisor",name:"Supervisor",active:true},
+    {id:"engineer1-default",username:"engineer1",password:"Eng1@9964",role:"Engineer 1",name:"Engineer 1",active:true},
+    {id:"engineer2-default",username:"engineer2",password:"Eng2@9964",role:"Engineer 2",name:"Engineer 2",active:true},
+    {id:"engineer3-default",username:"engineer3",password:"Eng3@9964",role:"Engineer 3",name:"Engineer 3",active:true},
+    {id:"engineer4-default",username:"engineer4",password:"Eng4@9964",role:"Engineer 4",name:"Engineer 4",active:true},
+    {id:"engineer5-default",username:"engineer5",password:"Eng5@9964",role:"Engineer 5",name:"Engineer 5",active:true},
+    {id:"engineer6-default",username:"engineer6",password:"Eng6@9964",role:"Engineer 6",name:"Engineer 6",active:true}
+];
+
+let bmjAccounts=JSON.parse(
+    localStorage.getItem("BMJ_ACCOUNTS") ||
+    JSON.stringify(BMJ_DEFAULT_ACCOUNTS)
+);
+
+
+function dateStr(d=new Date()){
+    const y=d.getFullYear();
+    const m=String(d.getMonth()+1).padStart(2,"0");
+    const day=String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+}
+function monday(){
+    const d=new Date();
+    d.setHours(0,0,0,0);
+    const day=d.getDay();
+    const diff=day===0 ? -6 : 1-day;
+    d.setDate(d.getDate()+diff);
+    return dateStr(d);
+}
+function bmjRole(){
+    return currentUser?.role || "";
+}
+function bmjIsFieldUser(){
+    return bmjRole()!=="Admin";
+}
+function bmjEscape(v){ return typeof esc==="function" ? esc(v) : String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m])); }
+
+function statusLabel(status){
+    const labels={
+        P:"P - Present (1 Day)",
+        A:"A - Absent (0 Day)",
+        HD:"HD - Half Day (0.5 Day)",
+        "P1/2":"P1/2 - 1.5 Days",
+        PP:"PP - 2 Days",
+        "PPP":"PPP - 3 Days"
+    };
+    const cls={P:"statusP",A:"statusA",HD:"statusHD","P1/2":"statusP12",PP:"statusPP","PPP":"statusPP"};
+    return `<span class="${cls[status]||"statusNone"}">${bmjEscape(labels[status]||status||"-")}</span>`;
+}
+function duty(status){
+    return {
+        P:"1 Day",
+        A:"0 Day",
+        HD:"0.5 Day",
+        "P1/2":"1.5 Days",
+        PP:"2 Days",
+        "PPP":"3 Days"
+    }[status] || "-";
+}
+function statusTimes(status){
+    return {
+        P:["06:00","14:00","1 Day"],
+        A:["","","0 Day"],
+        HD:["06:00","10:00","0.5 Day"],
+        "P1/2":["06:00","18:00","1.5 Days"],
+        PP:["06:00","22:00","2 Days"],
+        "PPP":["06:00","06:00","3 Days"]
+    }[status] || ["","","-"];
+}
+/* Keep unsaved dropdown changes on the current row. */
+const bmjDailyDraftStatus = {};
+function statusChanged(id){
+    const s=document.getElementById("status-"+id);
+    if(!s)return;
+    bmjDailyDraftStatus[id]=s.value;
+    const v=statusTimes(s.value);
+    const i=document.getElementById("in-"+id);
+    const o=document.getElementById("out-"+id);
+    const d=document.getElementById("days-"+id);
+    if(i)i.value=v[0];
+    if(o)o.value=v[1];
+    if(d)d.textContent=v[2];
+}
+
+/* ---------- Firebase docs ---------- */
+const bmjSitesDoc=db.collection("bmjAttendance").doc("sites");
+const bmjGroupsDoc=db.collection("bmjAttendance").doc("labourGroups");
+const bmjAccountsDoc=db.collection("bmjAttendance").doc("accounts");
+
+function saveData(){
+    localStorage.setItem(LABOUR_KEY,JSON.stringify(labourers));
+    localStorage.setItem(ATT_KEY,JSON.stringify(attendance));
+    localStorage.setItem("BMJ_SITES",JSON.stringify(sites));
+    localStorage.setItem("BMJ_LABOUR_GROUPS",JSON.stringify(labourGroups));
+    if(!cloudReady)return;
+
+    labourDoc.set({items:labourers,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(e=>console.error(e));
+    attendanceDoc.set({items:attendance,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(e=>console.error(e));
+    bmjSitesDoc.set({items:sites,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(e=>console.error(e));
+    bmjGroupsDoc.set({items:labourGroups,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(e=>console.error(e));
+}
+
+async function loadFirebaseData(){
+    try{
+        const snaps=await Promise.all([
+            labourDoc.get(),attendanceDoc.get(),bmjSitesDoc.get(),bmjGroupsDoc.get(),bmjAccountsDoc.get()
+        ]);
+        const localL=JSON.parse(localStorage.getItem(LABOUR_KEY)||"[]");
+        const localA=JSON.parse(localStorage.getItem(ATT_KEY)||"[]");
+
+        labourers=snaps[0].exists && Array.isArray(snaps[0].data().items) ? snaps[0].data().items : localL;
+        attendance=snaps[1].exists && Array.isArray(snaps[1].data().items) ? snaps[1].data().items : localA;
+        sites=snaps[2].exists && Array.isArray(snaps[2].data().items) ? snaps[2].data().items : sites;
+        labourGroups=snaps[3].exists && Array.isArray(snaps[3].data().items) ? snaps[3].data().items : labourGroups;
+        bmjAccounts=snaps[4].exists && Array.isArray(snaps[4].data().items)
+            ? normalizeBMJAccounts(snaps[4].data().items)
+            : normalizeBMJAccounts(bmjAccounts);
+
+        cloudReady=true;
+        localStorage.setItem(LABOUR_KEY,JSON.stringify(labourers));
+        localStorage.setItem(ATT_KEY,JSON.stringify(attendance));
+        localStorage.setItem("BMJ_SITES",JSON.stringify(sites));
+        localStorage.setItem("BMJ_LABOUR_GROUPS",JSON.stringify(labourGroups));
+        localStorage.setItem("BMJ_ACCOUNTS",JSON.stringify(bmjAccounts));
+
+        if(!snaps[2].exists || !snaps[3].exists) saveData();
+        if(!snaps[4].exists) saveBMJAccounts();
+
+        labourDoc.onSnapshot(s=>{
+            if(!s.exists)return;
+            const x=s.data().items;
+            if(Array.isArray(x)){labourers=x;localStorage.setItem(LABOUR_KEY,JSON.stringify(x));if(currentUser)updateAll();}
+        });
+        attendanceDoc.onSnapshot(s=>{
+            if(!s.exists)return;
+            const x=s.data().items;
+            if(Array.isArray(x)){attendance=x;localStorage.setItem(ATT_KEY,JSON.stringify(x));if(currentUser)updateAll();}
+        });
+        bmjSitesDoc.onSnapshot(s=>{
+            if(!s.exists)return;
+            const x=s.data().items;
+            if(Array.isArray(x)){sites=x;localStorage.setItem("BMJ_SITES",JSON.stringify(x));refreshBMJSelects();if(currentUser)updateAll();}
+        });
+        bmjGroupsDoc.onSnapshot(s=>{
+            if(!s.exists)return;
+            const x=s.data().items;
+            if(Array.isArray(x)){labourGroups=x;localStorage.setItem("BMJ_LABOUR_GROUPS",JSON.stringify(x));refreshBMJSelects();if(currentUser)updateAll();}
+        });
+
+        bmjAccountsDoc.onSnapshot(s=>{
+            if(!s.exists)return;
+            const x=s.data().items;
+            if(Array.isArray(x)){
+                bmjAccounts=normalizeBMJAccounts(x);
+                localStorage.setItem("BMJ_ACCOUNTS",JSON.stringify(bmjAccounts));
+                if(currentUser) renderAccounts();
+            }
+        });
+
+        refreshBMJSelects();
+        updateAll();
+    }catch(e){
+        console.error("Firebase error",e);
+        cloudReady=true;
+        refreshBMJSelects();
+    }
+}
+
+/* ---------- Dynamic sites/groups ---------- */
+function rebuildBMJSelect(id,items,allLabel){
+    const el=document.getElementById(id);
+    if(!el)return;
+    const old=el.value;
+    el.innerHTML="";
+    if(allLabel!==null){
+        const op=document.createElement("option");
+        op.value=allLabel;op.textContent=allLabel;el.appendChild(op);
+    }
+    items.forEach(x=>{
+        const op=document.createElement("option");
+        op.value=x;op.textContent=x;el.appendChild(op);
+    });
+    if([...el.options].some(o=>o.value===old))el.value=old;
+}
+function refreshBMJSelects(){
+    rebuildBMJSelect("attendanceSite",sites,null);
+    rebuildBMJSelect("supervisorSite",sites,"Select Site");
+    const supervisorSiteEl=document.getElementById("supervisorSite");
+    if(supervisorSiteEl && supervisorSiteEl.options.length){
+        supervisorSiteEl.options[0].value="";
+    }
+    rebuildBMJSelect("dashboardSite",sites,"All");
+    rebuildBMJSelect("weeklySite",sites,"All");
+    rebuildBMJSelect("workedSite",sites,"All");
+    rebuildBMJSelect("attendanceGroup",labourGroups,"All");
+    rebuildBMJSelect("labourGroupFilter",labourGroups,"All");
+    rebuildBMJSelect("dashboardGroup",labourGroups,"All");
+    rebuildBMJSelect("workerGroup",labourGroups,null);
+    rebuildBMJSelect("workedGroup",labourGroups,"All");
+    renderManagedSites();
+    renderManagedGroups();
+    renderSiteSummary();
+}
+function renderManagedSites(){
+    const box=document.getElementById("managedSitesList"); if(!box)return;
+    box.innerHTML=sites.map((s,i)=>`
+      <div class="manageRow">
+        <input id="siteEdit-${i}" value="${bmjEscape(s)}">
+        <button class="blue" onclick="editManagedSite(${i})">✏️ Edit</button>
+        <button class="red" onclick="deleteManagedSite(${i})">🗑️ Delete</button>
+      </div>`).join("");
+}
+function renderManagedGroups(){
+    const box=document.getElementById("managedGroupsList"); if(!box)return;
+    box.innerHTML=labourGroups.map((g,i)=>`
+      <div class="manageRow">
+        <input id="groupEdit-${i}" value="${bmjEscape(g)}">
+        <button class="blue" onclick="editManagedGroup(${i})">✏️ Edit</button>
+        <button class="red" onclick="deleteManagedGroup(${i})">🗑️ Delete</button>
+      </div>`).join("");
+}
+function addManagedSite(){
+    if(bmjRole()!=="Admin")return;
+    const el=document.getElementById("newSiteName"),name=(el?.value||"").trim();
+    if(!name)return alert("Enter site name.");
+    if(sites.some(x=>x.toLowerCase()===name.toLowerCase()))return alert("Site already exists.");
+    sites.push(name);el.value="";saveData();refreshBMJSelects();updateAll();
+}
+function editManagedSite(i){
+    if(bmjRole()!=="Admin")return;
+    const el=document.getElementById("siteEdit-"+i),name=(el?.value||"").trim();
+    if(!name)return alert("Enter site name.");
+    if(sites.some((x,j)=>j!==i&&x.toLowerCase()===name.toLowerCase()))return alert("Site already exists.");
+    const old=sites[i];sites[i]=name;
+    attendance.forEach(r=>{if(r.site===old)r.site=name;});
+    saveData();refreshBMJSelects();updateAll();
+}
+function deleteManagedSite(i){
+    if(bmjRole()!=="Admin")return;
+    if(sites.length<=1)return alert("At least one site must remain.");
+    const name=sites[i];
+    if(!confirm("Delete "+name+" from the site list? Existing attendance remains."))return;
+    sites.splice(i,1);saveData();refreshBMJSelects();updateAll();
+}
+function addManagedGroup(){
+    if(bmjRole()!=="Admin")return;
+    const el=document.getElementById("newGroupName"),name=(el?.value||"").trim();
+    if(!name)return alert("Enter labour group name.");
+    if(labourGroups.some(x=>x.toLowerCase()===name.toLowerCase()))return alert("Labour group already exists.");
+    labourGroups.push(name);el.value="";saveData();refreshBMJSelects();updateAll();
+}
+function editManagedGroup(i){
+    if(bmjRole()!=="Admin")return;
+    const el=document.getElementById("groupEdit-"+i),name=(el?.value||"").trim();
+    if(!name)return alert("Enter labour group name.");
+    if(labourGroups.some((x,j)=>j!==i&&x.toLowerCase()===name.toLowerCase()))return alert("Labour group already exists.");
+    const old=labourGroups[i];labourGroups[i]=name;
+    labourers.forEach(w=>{if((w.group||"Roshan Labours")===old)w.group=name;});
+    saveData();refreshBMJSelects();updateAll();
+}
+function deleteManagedGroup(i){
+    if(bmjRole()!=="Admin")return;
+    if(labourGroups.length<=1)return alert("At least one labour group must remain.");
+    const name=labourGroups[i];
+    if(!confirm("Delete "+name+" from the group list? Existing labour records remain."))return;
+    labourGroups.splice(i,1);saveData();refreshBMJSelects();updateAll();
+}
+
+/* ---------- Engineer + Supervisor account management ---------- */
+
+function normalizeBMJAccounts(list){
+    if(!Array.isArray(list)) return JSON.parse(JSON.stringify(BMJ_DEFAULT_ACCOUNTS));
+
+    return list.map((a,i)=>({
+        id:a.id || ("account-"+Date.now()+"-"+i),
+        username:String(a.username||"").trim().toLowerCase(),
+        password:String(a.password||""),
+        role:String(a.role||"Supervisor"),
+        name:String(a.name||a.role||"").trim(),
+        active:a.active!==false
+    })).filter(a=>a.username && a.password);
+}
+
+function saveBMJAccounts(){
+    bmjAccounts=normalizeBMJAccounts(bmjAccounts);
+    localStorage.setItem("BMJ_ACCOUNTS",JSON.stringify(bmjAccounts));
+
+    if(!cloudReady)return;
+
+    bmjAccountsDoc.set({
+        items:bmjAccounts,
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp()
+    },{merge:true}).catch(console.error);
+}
+
+function accountDisplayName(account){
+    return account?.name || account?.role || account?.username || "-";
+}
+
+function renderAccounts(){
+    const body=document.getElementById("accountsTable");
+    const summary=document.getElementById("accountsSummary");
+    if(!body)return;
+
+    const list=bmjAccounts.filter(a=>a.role!=="Admin");
+
+    if(summary){
+        summary.textContent=list.length+" Engineer/Supervisor Accounts";
+    }
+
+    if(!list.length){
+        body.innerHTML='<tr><td colspan="7" class="empty">No Engineer or Supervisor accounts.</td></tr>';
+        return;
+    }
+
+    body.innerHTML=list.map((a,i)=>`
+        <tr>
+            <td>${i+1}</td>
+            <td>${bmjEscape(a.role)}</td>
+            <td>${bmjEscape(accountDisplayName(a))}</td>
+            <td>${bmjEscape(a.username)}</td>
+            <td>${bmjEscape(a.password)}</td>
+            <td>
+                <span class="${a.active?'accountStatusActive':'accountStatusDeleted'}">
+                    ${a.active?'Active':'Disabled'}
+                </span>
+            </td>
+            <td>
+                <button class="blue" onclick="editAccount('${bmjEscape(a.id)}')">✏️ Edit</button>
+                <button class="${a.active?'red':'green'}" onclick="toggleAccount('${bmjEscape(a.id)}')">
+                    ${a.active?'Disable':'Enable'}
+                </button>
+                <button class="red" onclick="deleteAccount('${bmjEscape(a.id)}')">🗑️ Delete</button>
+            </td>
+        </tr>
+    `).join("");
+}
+
+function addAccount(){
+    if(bmjRole()!=="Admin")return;
+
+    const role=(document.getElementById("newAccountRole")?.value||"").trim();
+    if(!role){
+        alert("Enter Type / In-Charge, for example Engineer 7.");
+        return;
+    }
+
+    const name=(document.getElementById("newAccountName")?.value||"").trim() || role;
+    const username=(document.getElementById("newAccountUsername")?.value||"").trim().toLowerCase();
+    const password=document.getElementById("newAccountPassword")?.value||"";
+
+    if(!username || !password){
+        alert("Enter username and password.");
+        return;
+    }
+
+    if(username==="admin"){
+        alert("This username is reserved for Admin.");
+        return;
+    }
+
+    if(bmjAccounts.some(a=>a.username===username)){
+        alert("Username already exists.");
+        return;
+    }
+
+    bmjAccounts.push({
+        id:"account-"+Date.now()+"-"+Math.random().toString(36).slice(2,8),
+        username,
+        password,
+        role,
+        name,
+        active:true
+    });
+
+    document.getElementById("newAccountRole").value="";
+    document.getElementById("newAccountName").value="";
+    document.getElementById("newAccountUsername").value="";
+    document.getElementById("newAccountPassword").value="";
+
+    saveBMJAccounts();
+    renderAccounts();
+}
+
+function editAccount(id){
+    if(bmjRole()!=="Admin")return;
+
+    const a=bmjAccounts.find(x=>x.id===id);
+    if(!a)return;
+
+    const role=prompt(
+        "Type / In-Charge (Supervisor or Engineer 1-6):",
+        a.role
+    );
+    if(role===null)return;
+
+    const name=prompt("In-Charge Name:",accountDisplayName(a));
+    if(name===null)return;
+
+    const username=prompt("Username:",a.username);
+    if(username===null)return;
+
+    const cleanUsername=username.trim().toLowerCase();
+    if(!cleanUsername){
+        alert("Username cannot be empty.");
+        return;
+    }
+
+    if(bmjAccounts.some(x=>x.id!==id && x.username===cleanUsername)){
+        alert("Username already exists.");
+        return;
+    }
+
+    const password=prompt("Password:",a.password);
+    if(password===null)return;
+
+    if(!password){
+        alert("Password cannot be empty.");
+        return;
+    }
+
+    a.role=role.trim()||a.role;
+    a.name=name.trim()||a.role;
+    a.username=cleanUsername;
+    a.password=password;
+
+    // Existing attendance records are NOT changed.
+    saveBMJAccounts();
+    renderAccounts();
+}
+
+function toggleAccount(id){
+    if(bmjRole()!=="Admin")return;
+
+    const a=bmjAccounts.find(x=>x.id===id);
+    if(!a)return;
+
+    const action=a.active?"disable":"enable";
+    if(!confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} ${accountDisplayName(a)} login?`)){
+        return;
+    }
+
+    a.active=!a.active;
+
+    // Existing attendance records are NOT changed.
+    saveBMJAccounts();
+    renderAccounts();
+}
+
+function deleteAccount(id){
+    if(bmjRole()!=="Admin")return;
+
+    const a=bmjAccounts.find(x=>x.id===id);
+    if(!a)return;
+
+    if(a.username===currentUser?.username){
+        alert("You cannot delete the Admin login while logged in.");
+        return;
+    }
+
+    if(!confirm(
+        `Delete login "${a.username}"?\n\n`+
+        `This deletes only the login account. Existing attendance and reports will NOT be deleted or changed.`
+    )){
+        return;
+    }
+
+    bmjAccounts=bmjAccounts.filter(x=>x.id!==id);
+
+    // IMPORTANT: attendance array is deliberately untouched.
+    saveBMJAccounts();
+    renderAccounts();
+}
+
+function findBMJAccount(username,password){
+    return bmjAccounts.find(a=>
+        a.active!==false &&
+        a.username===username &&
+        a.password===password
+    ) || null;
+}
+
+/* ---------- Login: Admin + Supervisor + 6 Engineers ---------- */
+function login(){
+    const username=document.getElementById("loginUsername").value.trim().toLowerCase();
+    const password=document.getElementById("loginPassword").value;
+
+    const found=findBMJAccount(username,password);
+
+    if(!found){
+        document.getElementById("loginError").textContent="Invalid username or password.";
+        return;
+    }
+
+    currentUser={
+        username:found.username,
+        role:found.role,
+        name:found.name||found.role,
+        accountId:found.id,
+        site:found.role==="Admin"?"All":""
+    };
+
+    document.getElementById("loginPage").style.display="none";
+    document.getElementById("app").style.display="block";
+    setupInterface();
+}
+
+function setupInterface(){
+    const admin=currentUser.role==="Admin";
+
+    document.querySelectorAll(".adminNav").forEach(n=>{
+        n.style.display=admin?"block":"none";
+    });
+
+    document.querySelectorAll(".fieldNav").forEach(n=>{
+        n.style.display=admin?"none":"block";
+    });
+
+    document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+
+    const first=admin?"dashboard":"daily";
+    document.getElementById(first)?.classList.add("active");
+
+    document.querySelectorAll(".nav").forEach(n=>n.classList.remove("active"));
+
+    const firstBtn=[...document.querySelectorAll(".nav")].find(
+        n=>n.getAttribute("onclick")?.includes(`showPage('${first}'`)
+    );
+    firstBtn?.classList.add("active");
+
+    document.getElementById("supervisorWelcome").style.display=admin?"none":"block";
+    document.getElementById("attendanceSiteWrap").style.display=admin?"block":"none";
+
+    const title=document.getElementById("fieldAttendanceTitle");
+    if(title && !admin){
+        title.textContent=currentUser.role+" Attendance";
+    }
+
+    // Always show the logged-in user's role/engineer number.
+    const badge=document.getElementById("userBadge");
+    if(badge){
+        badge.textContent=currentUser.role;
+    }
+
+    refreshBMJSelects();
+    updateAll();
+}
+
+/* ---------- Navigation ---------- */
+function showPage(id,btn){
+    if(!currentUser)return;
+    if(bmjIsFieldUser() && !["daily","labourers","workedAttendance"].includes(id)){
+        return;
+    }
+    if(currentUser.role==="Admin" && id==="workedAttendance")return;
+    document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+    document.getElementById(id)?.classList.add("active");
+    document.querySelectorAll(".nav").forEach(n=>n.classList.remove("active"));
+    btn?.classList.add("active");
+    updateAll();
+}
+function openAttendancePage(){
+    const b=[...document.querySelectorAll(".nav")].find(n=>n.getAttribute("onclick")?.includes("showPage('daily'"));
+    showPage("daily",b);
+}
+function setSupervisorSite(){
+    let site=document.getElementById("supervisorSite")?.value || "";
+
+    if(site==="Select Site"){
+        site="";
+    }
+
+    currentUser.site=site;
+
+    const badge=document.getElementById("userBadge");
+    if(badge){
+        badge.textContent=currentUser.role+(site ? " - "+site : "");
+    }
+
+    const title=document.getElementById("fieldAttendanceTitle");
+    if(title){
+        title.textContent=currentUser.role+" Attendance";
+    }
+
+    const box=document.getElementById("selectedSiteBox");
+    const text=document.getElementById("selectedSiteText");
+
+    if(site){
+        box.style.display="block";
+        text.textContent=site;
+    }else{
+        box.style.display="none";
+    }
+
+    loadDailyAttendance();
+}
+
+/* ---------- Labourers: field users can add/save duty, Admin can edit/delete ---------- */
+function editLabourer(id){
+    if(bmjRole()!=="Admin")return;
+
+    const w=labourers.find(x=>x.id===id);
+    if(!w)return;
+
+    const newId=prompt("Labour ID / Number:",w.id||"");
+    if(newId===null)return;
+
+    const cleanId=newId.trim();
+    if(!cleanId){
+        alert("Labour ID cannot be empty.");
+        return;
+    }
+
+    if(labourers.some(x=>x.id===cleanId && x.id!==id)){
+        alert("This Labour ID already exists.");
+        return;
+    }
+
+    const name=prompt("Labour Name:",w.name||"");
+    if(name===null)return;
+
+    const category=prompt(
+        "Category (Mason / Steel Fixer / Carpenter / Helper / Electrician / Plumber / Painter / Fabricator / General Labour):",
+        w.role||"General Labour"
+    );
+    if(category===null)return;
+
+    const group=prompt(
+        "Labour Group:",
+        w.group||"Roshan Labours"
+    );
+    if(group===null)return;
+
+    const phone=prompt("Phone Number:",w.phone||"");
+    if(phone===null)return;
+
+    const startTime=prompt(
+        "Normal Duty Start (HH:MM):",
+        w.dutyStart||"06:00"
+    );
+    if(startTime===null)return;
+
+    const endTime=prompt(
+        "Normal Duty End (HH:MM):",
+        w.dutyEnd||"14:00"
+    );
+    if(endTime===null)return;
+
+    if(!name.trim()){
+        alert("Name cannot be empty.");
+        return;
+    }
+
+    const oldId=w.id;
+
+    w.id=cleanId;
+    w.name=name.trim();
+    w.role=category.trim()||"General Labour";
+    w.group=group.trim()||"Roshan Labours";
+    w.phone=phone.trim();
+    w.dutyStart=startTime.trim()||"06:00";
+    w.dutyEnd=endTime.trim()||"14:00";
+
+    // If the ID changes, keep all old attendance records linked to this labourer.
+    if(oldId!==cleanId){
+        attendance.forEach(r=>{
+            if(r.workerId===oldId){
+                r.workerId=cleanId;
+            }
+        });
+    }
+
+    saveData();
+    updateAll();
+}
+
+function renderLabourers(){
+    const role=document.getElementById("labourRoleFilter")?.value||"All";
+    const group=document.getElementById("labourGroupFilter")?.value||"All";
+    const search=(document.getElementById("labourSearch")?.value||"").toLowerCase();
+    const list=labourers.filter(w=>{
+        const g=w.group||"Roshan Labours";
+        return (role==="All"||w.role===role)&&(group==="All"||g===group)&&
+          (!search||(w.name||"").toLowerCase().includes(search)||(w.id||"").toLowerCase().includes(search));
+    });
+    const table=document.getElementById("labourerTable");if(!table)return;
+    if(!list.length){table.innerHTML='<tr><td colspan="9" class="empty">No labourers found.</td></tr>';return;}
+    table.innerHTML=list.map((w,i)=>`
+      <tr>
+        <td>${i+1}</td><td>${bmjEscape(w.id)}</td><td><b>${bmjEscape(w.name)}</b></td>
+        <td>${bmjEscape(w.role)}</td><td>${bmjEscape(w.group||"Roshan Labours")}</td>
+        <td>${bmjEscape(w.phone||"-")}</td>
+        <td><input id="start-${bmjEscape(w.id)}" type="time" value="${bmjEscape(w.dutyStart||"06:00")}"></td>
+        <td><input id="end-${bmjEscape(w.id)}" type="time" value="${bmjEscape(w.dutyEnd||"14:00")}"></td>
+        <td>
+          <button class="blue" onclick="saveDuty('${bmjEscape(w.id)}')">Save</button>
+          ${bmjRole()==="Admin"?`<button class="blue" onclick="editLabourer('${bmjEscape(w.id)}')">✏️ Edit</button>
+          <button class="red" onclick="deleteLabourer('${bmjEscape(w.id)}')">Delete</button>`:""}
+        </td>
+      </tr>`).join("");
+}
+
+/* ---------- Same-day multi-site attendance ---------- */
+function recordsForWorkerDateSite(id,date,site){
+    return attendance.filter(r=>r.workerId===id&&r.date===date&&r.site===site);
+}
+function recordsForWorkerDate(id,date){
+    return attendance.filter(r=>r.workerId===id&&r.date===date);
+}
+function currentSiteRecord(id,date,site){
+    return recordsForWorkerDateSite(id,date,site)[0]||null;
+}
+function saveAttendance(id){
+    if(!currentUser)return;
+
+    const date=document.getElementById("attendanceDate")?.value;
+    const site=currentUser.role==="Admin"
+        ? document.getElementById("attendanceSite")?.value
+        : currentUser.site;
+
+    if(!site || site==="Select Site")return alert("Select working site first.");
+
+    const status=document.getElementById("status-"+id)?.value;
+    if(!status)return alert("Select attendance status.");
+
+    const now=new Date();
+    const takenAt=now.toISOString();
+
+    const existing=currentSiteRecord(id,date,site);
+
+    const data={
+        workerId:id,
+        date,
+        site,
+
+        // Person who actually took/updated this attendance.
+        inCharge:currentUser.role==="Admin"?"Admin":(currentUser.name||currentUser.role),
+        takenBy:currentUser.role==="Admin"?"Admin":currentUser.role,
+        takenByUsername:currentUser.username,
+        takenAt,
+
+        status,
+        inTime:document.getElementById("in-"+id)?.value||"",
+        outTime:document.getElementById("out-"+id)?.value||"",
+        dutyCount:duty(status),
+        ot:Number(document.getElementById("ot-"+id)?.value||0),
+
+        updatedBy:currentUser.username,
+        updatedAt:Date.now()
+    };
+
+    if(existing){
+        Object.assign(existing,data);
+    }else{
+        attendance.push(data);
+    }
+
+    saveData();
+    delete bmjDailyDraftStatus[id];
+    loadDailyAttendance();
+    renderWorkedAttendance();
+    renderMasterTable();
+
+    const total=sameDayTotalForWorker(id,date);
+    const worker=labourers.find(w=>w.id===id);
+    if(worker && bmjRole()!=="Admin"){
+        const oldNotice=document.getElementById("sameDayAttendanceNotice");
+        if(oldNotice){
+            oldNotice.textContent=`${worker.name}: ${site} saved. Total for today = ${total} Day(s).`;
+            oldNotice.style.display="block";
+        }
+    }
+}
+/* ---------- Daily attendance ---------- */
+function loadDailyAttendance(){
+    const table=document.getElementById("dailyTable");
+    if(!table)return;
+
+    const date=document.getElementById("attendanceDate")?.value||dateStr();
+
+    let site=bmjRole()==="Admin"
+        ? document.getElementById("attendanceSite")?.value
+        : currentUser?.site;
+
+    const role=document.getElementById("attendanceRole")?.value||"All";
+    const group=document.getElementById("attendanceGroup")?.value||"All";
+    const search=(document.getElementById("attendanceSearch")?.value||"").toLowerCase();
+
+    // "Select Site" is only a placeholder. It must never become an attendance site.
+    if(!site || site==="Select Site"){
+        table.innerHTML='<tr><td colspan="10" class="empty">Please select your working site.</td></tr>';
+        const summary=document.getElementById("dailySummary");
+        if(summary)summary.textContent="Select Site";
+        return;
+    }
+
+    const list=labourers.filter(w=>{
+        const g=w.group||"Roshan Labours";
+
+        if(role!=="All" && w.role!==role)return false;
+        if(group!=="All" && g!==group)return false;
+
+        if(search &&
+            !(w.name||"").toLowerCase().includes(search) &&
+            !(w.id||"").toLowerCase().includes(search)
+        ){
+            return false;
+        }
+
+        // A labourer may work at more than one site on the same day.
+        // Example: HD/0.5 Day at RTP + P1/2/1.5 Days at RMS.
+        // Do not hide a labourer just because another site already has attendance.
+        return true;
+    });
+
+    const summary=document.getElementById("dailySummary");
+    if(summary)summary.textContent=site+" → "+list.length+" Labourers";
+
+    if(!list.length){
+        table.innerHTML='<tr><td colspan="10" class="empty">No labourers available for this site.</td></tr>';
+        return;
+    }
+
+    table.innerHTML=list.map((w,i)=>{
+        const record=currentSiteRecord(w.id,date,site);
+        const s=Object.prototype.hasOwnProperty.call(bmjDailyDraftStatus,w.id)
+            ? bmjDailyDraftStatus[w.id]
+            : (record?.status||"");
+        const t=statusTimes(s);
+
+        return `<tr>
+          <td>${i+1}</td>
+          <td>
+            <b>${bmjEscape(w.name)}</b><br>
+            <small>${bmjEscape(w.id)}</small>
+          </td>
+          <td>${bmjEscape(w.role)}</td>
+          <td>${bmjEscape(w.group||"Roshan Labours")}</td>
+          <td>
+            <select id="status-${bmjEscape(w.id)}" onchange="statusChanged('${bmjEscape(w.id)}')">
+              <option value="">Select</option>
+              <option value="P" ${s==="P"?"selected":""}>P - Present (1 Day)</option>
+              <option value="A" ${s==="A"?"selected":""}>A - Absent (0 Day)</option>
+              <option value="HD" ${s==="HD"?"selected":""}>HD - Half Day (0.5 Day)</option>
+              <option value="P1/2" ${s==="P1/2"?"selected":""}>P1/2 - 1.5 Days</option>
+              <option value="PP" ${s==="PP"?"selected":""}>PP - 2 Days</option>
+              <option value="PPP" ${s==="PPP"?"selected":""}>PPP - 3 Days</option>
+            </select>
+          </td>
+          <td><input id="in-${bmjEscape(w.id)}" type="time" value="${bmjEscape(record?.inTime||t[0]||"")}"></td>
+          <td><input id="out-${bmjEscape(w.id)}" type="time" value="${bmjEscape(record?.outTime||t[1]||"")}"></td>
+          <td><b id="days-${bmjEscape(w.id)}">${bmjEscape(record?.dutyCount||duty(s)||"-")}</b></td>
+          <td><input id="ot-${bmjEscape(w.id)}" type="number" min="0" step="0.5" value="${record?.ot??0}"></td>
+          <td><button class="green" onclick="saveAttendance('${bmjEscape(w.id)}')">Save</button></td>
+        </tr>`;
+    }).join("");
+}
+
+/* ---------- Worked attendance view only ---------- */
+
+function renderWorkedAttendance(){
+    const body=document.getElementById("workedAttendanceTable");if(!body)return;
+    const from=document.getElementById("workedFrom")?.value||dateStr();
+    const to=document.getElementById("workedTo")?.value||from;
+    const site=document.getElementById("workedSite")?.value||"All";
+    const group=document.getElementById("workedGroup")?.value||"All";
+
+    const rows=attendance.filter(r=>{
+        if(r.date<from||r.date>to)return false;
+        if(site!=="All"&&r.site!==site)return false;
+        const w=labourers.find(x=>x.id===r.workerId);
+        if(group!=="All"&&(w?.group||"Roshan Labours")!==group)return false;
+        return true;
+    }).sort((a,b)=>b.date.localeCompare(a.date)||String(a.site).localeCompare(String(b.site)));
+
+    document.getElementById("workedSummary").textContent=rows.length+" Labour Attendance Records";
+    body.innerHTML=rows.length?rows.map(r=>{
+        const w=labourers.find(x=>x.id===r.workerId);
+        return `<tr>
+          <td>${bmjEscape(r.date)}</td><td><b>${bmjEscape(w?.name||r.workerId)}</b><br><small>${bmjEscape(r.workerId)}</small></td>
+          <td>${bmjEscape(w?.role||"")}</td><td>${bmjEscape(w?.group||"Roshan Labours")}</td>
+          <td>${bmjEscape(r.site)}</td><td>${bmjEscape(r.inCharge||"")}</td>
+          <td>${statusLabel(r.status)}</td><td>${bmjEscape(r.dutyCount)}</td>
+          <td>${bmjEscape(r.inTime||"-")}</td><td>${bmjEscape(r.outTime||"-")}</td><td>${bmjEscape(r.ot||0)}</td>
+        </tr>`;
+    }).join(""):'<tr><td colspan="11" class="empty">No attendance found.</td></tr>';
+}
+
+/* ---------- Admin dashboard/site/report ---------- */
+function renderSiteSummary(){
+    const box=document.getElementById("siteSummary");if(!box)return;
+    const today=dateStr();
+    box.innerHTML=sites.map(s=>{
+        const rows=attendance.filter(r=>r.date===today&&r.site===s);
+        const days=rows.reduce((t,r)=>t+(parseFloat(String(r.dutyCount).replace(/[^\d.]/g,""))||0),0);
+        return `<div class="siteCard"><h2>${bmjEscape(s)}</h2><p>Attendance Records</p><div class="siteNumber">${rows.length}</div><p>Total Days: <b>${days}</b></p></div>`;
+    }).join("");
+}
+function updateSiteCounts(){
+    const today=dateStr();
+    const ids=["rmsCount","extruderCount","vtpCount","rtpCount"];
+    ids.forEach((id,i)=>{
+        const el=document.getElementById(id);
+        if(el)el.textContent=attendance.filter(r=>r.date===today&&r.site===sites[i]).length;
+    });
+    renderSiteSummary();
+}
+function updateDashboard(){
+    if(bmjRole()!=="Admin")return;
+    const today=dateStr();
+    document.getElementById("totalLabourers").textContent=labourers.length;
+    const todayRows=attendance.filter(r=>r.date===today);
+    document.getElementById("presentToday").textContent=todayRows.filter(r=>["P","P1/2","PP","PPP"].includes(r.status)).length;
+    document.getElementById("absentToday").textContent=todayRows.filter(r=>r.status==="A").length;
+    document.getElementById("otToday").textContent=todayRows.reduce((t,r)=>t+Number(r.ot||0),0).toFixed(1);
+    renderMasterTable();
+}
+function formatAttendanceTaken(record){
+    if(!record || !record.takenAt){
+        return "-";
+    }
+
+    const d=new Date(record.takenAt);
+    if(Number.isNaN(d.getTime())){
+        return "-";
+    }
+
+    const pad=n=>String(n).padStart(2,"0");
+
+    // Display exact local browser date/time:
+    // DD-MM-YYYY HH:MM:SS
+    return `${pad(d.getDate())}-${pad(d.getMonth()+1)}-${d.getFullYear()} `
+        + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function renderMasterTable(){
+
+    if(currentUser.role !== "Admin"){
+        return;
+    }
+
+    const today=dateStr();
+
+    const selectedSite =
+        document.getElementById("dashboardSite").value;
+
+    const selectedRole =
+        document.getElementById("dashboardRole").value;
+
+    const selectedGroup =
+        document.getElementById("dashboardGroup").value;
+
+    const selectedStatus =
+        document.getElementById("dashboardStatus").value;
+
+    const search =
+        document.getElementById("dashboardSearch").value
+        .trim()
+        .toLowerCase();
+
+    const list=labourers.filter(worker=>{
+
+        const workerGroup=worker.group || "Roshan Labours";
+
+        if(selectedRole!=="All" && worker.role!==selectedRole){
+            return false;
+        }
+
+        if(selectedGroup!=="All" && workerGroup!==selectedGroup){
+            return false;
+        }
+
+        if(search){
+            const nameMatch=(worker.name||"").toLowerCase().includes(search);
+            const idMatch=(worker.id||"").toLowerCase().includes(search);
+
+            if(!nameMatch && !idMatch){
+                return false;
+            }
+        }
+
+        const records=attendance.filter(r=>
+            r.workerId===worker.id &&
+            r.date===today &&
+            (selectedSite==="All" || r.site===selectedSite)
+        );
+
+        if(selectedStatus!=="All"){
+            const statusMatch=records.some(r=>
+                selectedStatus==="NONE" ? false : r.status===selectedStatus
+            );
+
+            if(selectedStatus==="NONE"){
+                if(records.length) return false;
+            }else if(!statusMatch){
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    const table=document.getElementById("masterTable");
+    const summary=document.getElementById("masterSummary");
+
+    summary.textContent=list.length+" Labourers";
+    table.innerHTML="";
+
+    if(list.length===0){
+        table.innerHTML='<tr><td colspan="9" class="empty">No labourers found.</td></tr>';
+        return;
+    }
+
+    table.innerHTML=list.map((worker,index)=>{
+
+        const records=attendance.filter(r=>
+            r.workerId===worker.id &&
+            r.date===today &&
+            (selectedSite==="All" || r.site===selectedSite)
+        );
+
+        const siteCell=records.length
+            ? records.map(r=>bmjEscape(r.site)).join(" + ")
+            : "-";
+
+        const inChargeCell=records.length
+            ? records.map(r=>bmjEscape(r.inCharge || r.incharge || "-")).join(" + ")
+            : "-";
+
+        const takenTimeCell=records.length
+            ? records.map(r=>bmjEscape(formatAttendanceTaken(r))).join(" + ")
+            : "-";
+
+        const statusCell=records.length
+            ? records.map(r=>bmjEscape(r.status)).join(" + ")
+            : "-";
+
+        const totalOT=records.reduce(
+            (total,r)=>total+Number(r.ot||0),
+            0
+        );
+
+        return `<tr>
+            <td>${index+1}</td>
+            <td>
+                <b>${bmjEscape(worker.name)}</b>
+                <br>
+                <small>${bmjEscape(worker.id)}</small>
+            </td>
+            <td>${bmjEscape(worker.role)}</td>
+            <td>${bmjEscape(worker.group||"Roshan Labours")}</td>
+            <td>${siteCell}</td>
+            <td>${inChargeCell}</td>
+            <td>${takenTimeCell}</td>
+            <td><b>${statusCell}</b></td>
+            <td>${totalOT.toFixed(1)}</td>
+        </tr>`;
+
+    }).join("");
+}
+/* ---------- 7-Day Sheet: All Sites + CSV ---------- */
+function generateWeekly(){
+    if(bmjRole()!=="Admin")return;
+    const startValue=document.getElementById("weekStart")?.value;if(!startValue)return;
+    const site=document.getElementById("weeklySite")?.value||"All";
+    const start=new Date(startValue+"T00:00:00");
+    const days=[];
+    for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);days.push(dateStr(d));}
+
+    const ids=[];
+    labourers.forEach(w=>{
+        const has=attendance.some(r=>r.workerId===w.id&&days.includes(r.date)&&(site==="All"||r.site===site));
+        if(has)ids.push(w.id);
+    });
+
+    document.getElementById("weeklyHead").innerHTML="<tr><th>Labourer</th>"+days.map(d=>`<th>${d}</th>`).join("")+"<th>Total Days</th><th>Total OT</th></tr>";
+    document.getElementById("weeklyBody").innerHTML=ids.length?ids.map((id,i)=>{
+        const w=labourers.find(x=>x.id===id);
+        let total=0,ot=0;
+        const cells=days.map(d=>{
+            const rs=attendance.filter(r=>r.workerId===id&&r.date===d&&(site==="All"||r.site===site));
+            total+=rs.reduce((t,r)=>t+(parseFloat(String(r.dutyCount).replace(/[^\d.]/g,""))||0),0);
+            ot+=rs.reduce((t,r)=>t+Number(r.ot||0),0);
+            return `<td>${rs.length?rs.map(r=>`${bmjEscape(r.site)}<br>${statusLabel(r.status)}`).join("<hr>"):"-"}</td>`;
+        }).join("");
+        return `<tr><td><b>${bmjEscape(w.name)}</b><br><small>${bmjEscape(w.id)}</small></td>${cells}<td><b>${total}</b></td><td><b>${ot.toFixed(1)}</b></td></tr>`;
+    }).join(""):'<tr><td colspan="10" class="empty">No attendance for this week.</td></tr>';
+}
+function exportWeeklyCSV(){
+    if(bmjRole()!=="Admin")return;
+    const startValue=document.getElementById("weekStart")?.value;if(!startValue)return;
+    const site=document.getElementById("weeklySite")?.value||"All";
+    const start=new Date(startValue+"T00:00:00");
+    const days=[];for(let i=0;i<7;i++){const d=new Date(start);d.setDate(start.getDate()+i);days.push(dateStr(d));}
+    let csv="Labourer,ID,"+days.join(",")+",Total Days,Total OT\n";
+    labourers.forEach(w=>{
+        const has=attendance.some(r=>r.workerId===w.id&&days.includes(r.date)&&(site==="All"||r.site===site));
+        if(!has)return;
+        let total=0,ot=0;
+        const vals=days.map(d=>{
+            const rs=attendance.filter(r=>r.workerId===w.id&&r.date===d&&(site==="All"||r.site===site));
+            total+=rs.reduce((t,r)=>t+(parseFloat(String(r.dutyCount).replace(/[^\d.]/g,""))||0),0);
+            ot+=rs.reduce((t,r)=>t+Number(r.ot||0),0);
+            return `"${rs.map(r=>`${r.site}: ${r.status} ${r.dutyCount}`).join(" + ")}"`;
+        });
+        csv+=`"${w.name}","${w.id}",${vals.join(",")},${total},${ot}\n`;
+    });
+    const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+    const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="BMJ_7_Day_Sheet.csv";a.click();URL.revokeObjectURL(a.href);
+}
+
+/* ---------- Add Edit button to Admin labour list via existing renderer override ---------- */
+/* ---------- Update everything ---------- */
+function updateAll(){
+    if(!currentUser)return;
+    refreshBMJSelects();
+    renderLabourers();
+    loadDailyAttendance();
+    renderWorkedAttendance();
+    if(bmjRole()==="Admin"){
+        updateDashboard();
+        updateSiteCounts();
+        generateWeekly();
+        updateReports();
+        renderAccounts();
+    }
+}
+
+/* ---------- DOM startup ---------- */
+document.addEventListener("DOMContentLoaded",()=>{
+    bmjAccounts=normalizeBMJAccounts(bmjAccounts);
+    localStorage.setItem("BMJ_ACCOUNTS",JSON.stringify(bmjAccounts));
+
+    const ad=document.getElementById("attendanceDate");
+    if(ad&&!ad.value)ad.value=dateStr();
+    const ws=document.getElementById("weekStart");
+    if(ws&&!ws.value)ws.value=monday();
+    const wf=document.getElementById("workedFrom");if(wf&&!wf.value)wf.value=dateStr();
+    const wt=document.getElementById("workedTo");if(wt&&!wt.value)wt.value=dateStr();
+    refreshBMJSelects();
+    loadFirebaseData();
+});
+
+/* ---------- Add weekly export button ---------- */
+document.addEventListener("DOMContentLoaded",()=>{
+    const panel=document.getElementById("weeklyBody")?.closest(".panel");
+    if(panel && !document.getElementById("weeklyExportBtn")){
+        const b=document.createElement("button");
+        b.id="weeklyExportBtn";b.className="green";b.textContent="📥 Export 7-Day CSV";b.onclick=exportWeeklyCSV;
+        panel.appendChild(b);
+    }
+});
+</script>
+
+
+<script>
+/* =========================================================
+BMJ FINAL DISPLAY FIX
+- 7-Day Sheet: status code only + OT underneath for each day
+- 7-Day Sheet: supports All Sites and multiple records/site on a day
+- Sites page: dynamically shows every site added by Admin
+========================================================= */
+
+function bmjStatusCode(status){
+    return status || "-";
+}
+
+function bmjWeeklyRecords(workerId, dateValue, selectedSite){
+    return attendance.filter(r =>
+        r.workerId===workerId &&
+        r.date===dateValue &&
+        (selectedSite==="All" || r.site===selectedSite)
+    );
+}
+
+function renderDynamicSitesPage(){
+    const box=document.getElementById("siteGridDynamic");
+    if(!box) return;
+
+    const today=dateStr();
+
+    box.innerHTML=sites.map(site=>{
+        const records=attendance.filter(r=>r.date===today && r.site===site);
+        const labourIds=new Set(records.map(r=>r.workerId));
+
+        return `
+        <div class="siteCard">
+            <h2>${bmjEscape(site)}</h2>
+            <p>Today's Labour</p>
+            <div class="siteNumber">${labourIds.size}</div>
+        </div>`;
+    }).join("");
+}
+
+function refreshBMJSiteSelectorsFinal(){
+    const weekly=document.getElementById("weeklySite");
+    if(weekly){
+        const old=weekly.value || "All";
+        weekly.innerHTML='<option value="All">All</option>'+
+            sites.map(s=>`<option value="${bmjEscape(s)}">${bmjEscape(s)}</option>`).join("");
+        if([...weekly.options].some(o=>o.value===old)) weekly.value=old;
+        else weekly.value="All";
+    }
+
+    const worked=document.getElementById("workedSite");
+    if(worked){
+        const old=worked.value || "All";
+        worked.innerHTML='<option value="All">All</option>'+
+            sites.map(s=>`<option value="${bmjEscape(s)}">${bmjEscape(s)}</option>`).join("");
+        if([...worked.options].some(o=>o.value===old)) worked.value=old;
+        else worked.value="All";
+    }
+
+    renderDynamicSitesPage();
+}
+
+/* Final 7-Day Sheet renderer */
+function generateWeekly(){
+    if(!currentUser || currentUser.role!=="Admin") return;
+
+    const startValue=document.getElementById("weekStart")?.value;
+    const selectedSite=document.getElementById("weeklySite")?.value || "All";
+
+    if(!startValue) return;
+
+    const start=new Date(startValue+"T00:00:00");
+    const ids=new Set();
+
+    for(let i=0;i<7;i++){
+        const d=new Date(start);
+        d.setDate(start.getDate()+i);
+        const ds=dateStr(d);
+
+        attendance
+            .filter(r=>r.date===ds && (selectedSite==="All" || r.site===selectedSite))
+            .forEach(r=>ids.add(r.workerId));
+    }
+
+    let head="<tr><th>Labourer</th>";
+
+    for(let i=0;i<7;i++){
+        const d=new Date(start);
+        d.setDate(start.getDate()+i);
+        head+=`<th>${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}</th>`;
+    }
+
+    head+="<th>Total OT</th></tr>";
+    document.getElementById("weeklyHead").innerHTML=head;
+
+    document.getElementById("weeklyBody").innerHTML=[...ids].map(id=>{
+        const worker=labourers.find(x=>x.id===id);
+        if(!worker) return "";
+
+        let totalOT=0;
+        let row=`<tr><td><b>${bmjEscape(worker.name)}</b><br><small>${bmjEscape(worker.group||"Roshan Labours")}</small></td>`;
+
+        for(let i=0;i<7;i++){
+            const d=new Date(start);
+            d.setDate(start.getDate()+i);
+            const ds=dateStr(d);
+            const records=bmjWeeklyRecords(id,ds,selectedSite);
+
+            if(!records.length){
+                row+="<td>-</td>";
+                continue;
+            }
+
+            const statuses=[...new Set(records.map(r=>r.status).filter(Boolean))];
+            const ot=records.reduce((sum,r)=>sum+Number(r.ot||0),0);
+            totalOT+=ot;
+
+            const statusText=statuses.join(" + ");
+            const siteText=selectedSite==="All"
+                ? [...new Set(records.map(r=>r.site).filter(Boolean))].join(" + ")
+                : selectedSite;
+
+            row+=`
+                <td>
+                    <small>${bmjEscape(siteText)}</small><br>
+                    <b>${bmjEscape(statusText)}</b>
+                    <br>
+                    <small>OT: ${ot.toFixed(1)}</small>
+                </td>`;
+        }
+
+        row+=`<td><b>${totalOT.toFixed(1)}</b></td></tr>`;
+        return row;
+    }).join("");
+}
+
+/* Make every final update refresh the dynamic Sites page and weekly selectors. */
+const bmjOriginalUpdateAll=window.updateAll;
+window.updateAll=function(){
+    if(typeof bmjOriginalUpdateAll==="function"){
+        bmjOriginalUpdateAll();
+    }
+    refreshBMJSiteSelectorsFinal();
+    renderDynamicSitesPage();
+};
+
+/* Also refresh immediately after page loads and whenever Admin adds/edits a site. */
+document.addEventListener("DOMContentLoaded",function(){
+    setTimeout(function(){
+        refreshBMJSiteSelectorsFinal();
+        renderDynamicSitesPage();
+        if(document.getElementById("weekStart")?.value) generateWeekly();
+    },500);
+});
+function bmjSyncFieldIdentity(){
+    if(!currentUser || currentUser.role==="Admin")return;
+
+    const badge=document.getElementById("userBadge");
+    if(badge){
+        badge.textContent=currentUser.role+(currentUser.site ? " - "+currentUser.site : "");
+    }
+
+    const title=document.getElementById("fieldAttendanceTitle");
+    if(title){
+        title.textContent=currentUser.role+" Attendance";
+    }
+}
+
+const bmjOldSetSupervisorSite=window.setSupervisorSite;
+window.setSupervisorSite=function(){
+    if(typeof bmjOldSetSupervisorSite==="function"){
+        bmjOldSetSupervisorSite();
+    }
+    bmjSyncFieldIdentity();
+};
+
+const bmjOldSetupInterface=window.setupInterface;
+window.setupInterface=function(){
+    if(typeof bmjOldSetupInterface==="function"){
+        bmjOldSetupInterface();
+    }
+    bmjSyncFieldIdentity();
+};
+
+</script>
+
+<script>
+/* =========================================================
+   FINAL CLEAN FIX - DAILY STATUS + MULTI-SITE DISPLAY
+   ========================================================= */
+
+function statusChanged(id){
+    const select=document.getElementById("status-"+id);
+    if(!select)return;
+
+    const status=select.value;
+    const v=statusTimes(status);
+    const i=document.getElementById("in-"+id);
+    const o=document.getElementById("out-"+id);
+    const d=document.getElementById("days-"+id);
+
+    if(i)i.value=v[0]||"";
+    if(o)o.value=v[1]||"";
+    if(d)d.textContent=v[2]||"-";
+
+    /* Do not save or remember an unsaved status selection. */
+    if(typeof bmjDailyDraftStatus!=="undefined"){
+        delete bmjDailyDraftStatus[id];
+    }
+}
+
+function loadDailyAttendance(){
+    const table=document.getElementById("dailyTable");
+    if(!table)return;
+
+    const date=document.getElementById("attendanceDate")?.value||dateStr();
+    const site=bmjRole()==="Admin"
+        ? document.getElementById("attendanceSite")?.value
+        : currentUser?.site;
+    const role=document.getElementById("attendanceRole")?.value||"All";
+    const group=document.getElementById("attendanceGroup")?.value||"All";
+    const search=(document.getElementById("attendanceSearch")?.value||"").trim().toLowerCase();
+
+    if(!site || site==="Select Site"){
+        table.innerHTML='<tr><td colspan="10" class="empty">Please select your working site.</td></tr>';
+        const summary=document.getElementById("dailySummary");
+        if(summary)summary.textContent="Select Site";
+        return;
+    }
+
+    const list=labourers.filter(w=>{
+        const g=w.group||"Roshan Labours";
+        if(role!=="All"&&w.role!==role)return false;
+        if(group!=="All"&&g!==group)return false;
+        if(search && !(w.name||"").toLowerCase().includes(search) && !(w.id||"").toLowerCase().includes(search))return false;
+        return true;
+    });
+
+    const summary=document.getElementById("dailySummary");
+    if(summary)summary.textContent=site+" → "+list.length+" Labourers";
+
+    if(!list.length){
+        table.innerHTML='<tr><td colspan="10" class="empty">No labourers available for this site.</td></tr>';
+        return;
+    }
+
+    table.innerHTML=list.map((w,i)=>{
+        /* Only the attendance record for THIS selected site controls this row. */
+        const record=currentSiteRecord(w.id,date,site);
+        const s=record?.status||"";
+        const t=statusTimes(s);
+
+        /* Show other-site work as a simple compact line under the labourer's name. */
+        const otherSiteRecords=recordsForWorkerDate(w.id,date).filter(r=>r.site!==site);
+        const otherSiteText=otherSiteRecords.length
+            ? otherSiteRecords.map(r=>`${bmjEscape(r.site)} ${bmjEscape(r.status||"")} ${bmjEscape(r.dutyCount||duty(r.status)||"")}`).join(" | ")
+            : "";
+
+        return `<tr>
+          <td>${i+1}</td>
+          <td>
+            <b>${bmjEscape(w.name)}</b><br>
+            <small>${bmjEscape(w.id)}</small>
+            ${otherSiteText?`<br><small class="compactSiteNote">${otherSiteText}</small>`:""}
+          </td>
+          <td>${bmjEscape(w.role)}</td>
+          <td>${bmjEscape(w.group||"Roshan Labours")}</td>
+          <td>
+            <select id="status-${bmjEscape(w.id)}" onchange="statusChanged('${bmjEscape(w.id)}')">
+              <option value="" ${s===""?"selected":""}>Select</option>
+              <option value="P" ${s==="P"?"selected":""}>P - Present (1 Day)</option>
+              <option value="A" ${s==="A"?"selected":""}>A - Absent (0 Day)</option>
+              <option value="HD" ${s==="HD"?"selected":""}>HD - Half Day (0.5 Day)</option>
+              <option value="P1/2" ${s==="P1/2"?"selected":""}>P1/2 - 1.5 Days</option>
+              <option value="PP" ${s==="PP"?"selected":""}>PP - 2 Days</option>
+              <option value="PPP" ${s==="PPP"?"selected":""}>PPP - 3 Days</option>
+            </select>
+          </td>
+          <td><input id="in-${bmjEscape(w.id)}" type="time" value="${bmjEscape(record?.inTime||t[0]||"")}"></td>
+          <td><input id="out-${bmjEscape(w.id)}" type="time" value="${bmjEscape(record?.outTime||t[1]||"")}"></td>
+          <td><b id="days-${bmjEscape(w.id)}">${bmjEscape(record?.dutyCount||duty(s)||"-")}</b></td>
+          <td><input id="ot-${bmjEscape(w.id)}" type="number" min="0" step="0.5" value="${record?.ot??0}"></td>
+          <td><button class="green" onclick="saveAttendance('${bmjEscape(w.id)}')">Save</button></td>
+        </tr>`;
+    }).join("");
+}
+
+function updateDashboard(){
+    if(bmjRole()!=="Admin")return;
+    const today=dateStr();
+    const todayRows=attendance.filter(r=>r.date===today);
+    const byWorker={};
+
+    todayRows.forEach(r=>{
+        if(!byWorker[r.workerId])byWorker[r.workerId]=[];
+        byWorker[r.workerId].push(r);
+    });
+
+    const presentCodes=["P","HD","P1/2","PP","PPP"];
+    const workerIds=Object.keys(byWorker);
+
+    document.getElementById("totalLabourers").textContent=labourers.length;
+    document.getElementById("presentToday").textContent=workerIds.filter(id=>byWorker[id].some(r=>presentCodes.includes(r.status))).length;
+    document.getElementById("absentToday").textContent=workerIds.filter(id=>{
+        const rows=byWorker[id];
+        return rows.some(r=>r.status==="A") && !rows.some(r=>presentCodes.includes(r.status));
+    }).length;
+    document.getElementById("otToday").textContent=todayRows.reduce((t,r)=>t+Number(r.ot||0),0).toFixed(1);
+    renderMasterTable();
+}
+
+function renderMasterTable(){
+    if(!currentUser || currentUser.role!=="Admin")return;
+
+    const today=dateStr();
+    const selectedSite=document.getElementById("dashboardSite")?.value||"All";
+    const selectedRole=document.getElementById("dashboardRole")?.value||"All";
+    const selectedGroup=document.getElementById("dashboardGroup")?.value||"All";
+    const selectedStatus=document.getElementById("dashboardStatus")?.value||"All";
+    const search=(document.getElementById("dashboardSearch")?.value||"").trim().toLowerCase();
+    const presentCodes=["P","HD","P1/2","PP","PPP"];
+
+    const list=labourers.filter(worker=>{
+        const workerGroup=worker.group||"Roshan Labours";
+        if(selectedRole!=="All"&&worker.role!==selectedRole)return false;
+        if(selectedGroup!=="All"&&workerGroup!==selectedGroup)return false;
+        if(search){
+            const nameMatch=(worker.name||"").toLowerCase().includes(search);
+            const idMatch=(worker.id||"").toLowerCase().includes(search);
+            if(!nameMatch&&!idMatch)return false;
+        }
+
+        const records=attendance.filter(r=>r.workerId===worker.id&&r.date===today&&(selectedSite==="All"||r.site===selectedSite));
+        const allToday=attendance.filter(r=>r.workerId===worker.id&&r.date===today);
+
+        if(selectedStatus!=="All"){
+            if(selectedStatus==="NONE"){
+                if(allToday.length)return false;
+            }else if(selectedStatus==="A"){
+                /* A worker with any present/working record today is NOT absent. */
+                if(!allToday.some(r=>r.status==="A") || allToday.some(r=>presentCodes.includes(r.status)))return false;
+            }else if(presentCodes.includes(selectedStatus)){
+                if(!allToday.some(r=>r.status===selectedStatus))return false;
+            }else if(!records.some(r=>r.status===selectedStatus)){
+                return false;
+            }
+        }
+
+        if(selectedSite!=="All" && !records.length)return false;
+        return true;
+    });
+
+    const table=document.getElementById("masterTable");
+    const summary=document.getElementById("masterSummary");
+    if(!table||!summary)return;
+    summary.textContent=list.length+" Labourers";
+
+    if(!list.length){
+        table.innerHTML='<tr><td colspan="9" class="empty">No labourers found.</td></tr>';
+        return;
+    }
+
+    table.innerHTML=list.map((worker,index)=>{
+        const records=attendance.filter(r=>r.workerId===worker.id&&r.date===today&&(selectedSite==="All"||r.site===selectedSite));
+        const siteCell=records.length?records.map(r=>bmjEscape(r.site)).join(" + "):"-";
+        const inChargeCell=records.length?records.map(r=>bmjEscape(r.inCharge||r.incharge||"-")).join(" + "):"-";
+        const takenTimeCell=records.length?records.map(r=>bmjEscape(formatAttendanceTaken(r))).join(" + "):"-";
+        const statusCell=records.length?records.map(r=>bmjEscape(r.status)).join(" + "):"-";
+        const totalOT=records.reduce((total,r)=>total+Number(r.ot||0),0);
+        return `<tr>
+          <td>${index+1}</td>
+          <td><b>${bmjEscape(worker.name)}</b><br><small>${bmjEscape(worker.id)}</small></td>
+          <td>${bmjEscape(worker.role)}</td>
+          <td>${bmjEscape(worker.group||"Roshan Labours")}</td>
+          <td>${siteCell}</td>
+          <td>${inChargeCell}</td>
+          <td>${takenTimeCell}</td>
+          <td><b>${statusCell}</b></td>
+          <td>${totalOT.toFixed(1)}</td>
+        </tr>`;
+    }).join("");
+}
+
+
+/* FINAL FIX: dashboard daily status must be worker-based, not attendance-row-based. */
+function bmjNormaliseAttendanceStatus(v){
+    return String(v==null?"":v).trim().toUpperCase();
+}
+function bmjIsWorkingStatus(v){
+    const s=bmjNormaliseAttendanceStatus(v);
+    return ["P","HD","P1/2","PP","PPP"].includes(s);
+}
+function bmjIsAbsentStatus(v){
+    return bmjNormaliseAttendanceStatus(v)==="A";
+}
+function bmjWorkerTodayRecords(workerId,today){
+    return attendance.filter(r=>String(r.workerId)===String(workerId)&&r.date===today);
+}
+
+function updateDashboard(){
+    if(!currentUser || bmjRole()!=="Admin") return;
+    const today=dateStr();
+    document.getElementById("totalLabourers").textContent=labourers.length;
+
+    /*
+       A labourer is Present/Working if ANY site has P, HD, P1/2, PP or PPP.
+       An A record at another site must NOT make that labourer Absent.
+       This also handles old Firestore records whose status may contain spaces.
+    */
+    let present=0, absent=0, ot=0;
+    labourers.forEach(w=>{
+        const rows=bmjWorkerTodayRecords(w.id,today);
+        const working=rows.some(r=>bmjIsWorkingStatus(r.status) || Number(r.dutyCount||0)>0);
+        const hasAbsent=rows.some(r=>bmjIsAbsentStatus(r.status));
+        if(working) present++;
+        else if(hasAbsent) absent++;
+        ot += rows.reduce((sum,r)=>sum+(Number(r.ot)||0),0);
+    });
+
+    document.getElementById("presentToday").textContent=present;
+    document.getElementById("absentToday").textContent=absent;
+    document.getElementById("otToday").textContent=ot.toFixed(1);
+    renderMasterTable();
+}
+
+function renderMasterTable(){
+    if(!currentUser || currentUser.role!=="Admin") return;
+    const today=dateStr();
+    const selectedSite=document.getElementById("dashboardSite")?.value||"All";
+    const selectedRole=document.getElementById("dashboardRole")?.value||"All";
+    const selectedGroup=document.getElementById("dashboardGroup")?.value||"All";
+    const selectedStatus=document.getElementById("dashboardStatus")?.value||"All";
+    const search=(document.getElementById("dashboardSearch")?.value||"").trim().toLowerCase();
+
+    const list=labourers.filter(worker=>{
+        const workerGroup=worker.group||"Roshan Labours";
+        if(selectedRole!=="All" && worker.role!==selectedRole) return false;
+        if(selectedGroup!=="All" && workerGroup!==selectedGroup) return false;
+        if(search){
+            const nameMatch=(worker.name||"").toLowerCase().includes(search);
+            const idMatch=(worker.id||"").toLowerCase().includes(search);
+            if(!nameMatch&&!idMatch) return false;
+        }
+
+        const allToday=bmjWorkerTodayRecords(worker.id,today);
+        const records=allToday.filter(r=>selectedSite==="All" || r.site===selectedSite);
+        const working=allToday.some(r=>bmjIsWorkingStatus(r.status) || Number(r.dutyCount||0)>0);
+        const hasAbsent=allToday.some(r=>bmjIsAbsentStatus(r.status));
+
+        if(selectedStatus!=="All"){
+            if(selectedStatus==="NONE"){
+                if(allToday.length) return false;
+            }else if(selectedStatus==="A"){
+                /* Never classify as absent when the worker worked at any site. */
+                if(!hasAbsent || working) return false;
+            }else if(["P","HD","P1/2","PP","PPP"].includes(selectedStatus)){
+                if(!allToday.some(r=>bmjNormaliseAttendanceStatus(r.status)===selectedStatus)) return false;
+            }else{
+                if(!records.some(r=>bmjNormaliseAttendanceStatus(r.status)===selectedStatus)) return false;
+            }
+        }
+        if(selectedSite!=="All" && !records.length) return false;
+        return true;
+    });
+
+    const table=document.getElementById("masterTable");
+    const summary=document.getElementById("masterSummary");
+    if(!table||!summary) return;
+    summary.textContent=list.length+" Labourers";
+    if(!list.length){
+        table.innerHTML='<tr><td colspan="9" class="empty">No labourers found.</td></tr>';
+        return;
+    }
+
+    table.innerHTML=list.map((worker,index)=>{
+        const records=bmjWorkerTodayRecords(worker.id,today).filter(r=>selectedSite==="All"||r.site===selectedSite);
+        const siteCell=records.length?records.map(r=>bmjEscape(r.site)).join(" + "):"-";
+        const inChargeCell=records.length?records.map(r=>bmjEscape(r.inCharge||r.incharge||"-")).join(" + "):"-";
+        const takenTimeCell=records.length?records.map(r=>bmjEscape(formatAttendanceTaken(r))).join(" + "):"-";
+        const statusCell=records.length?records.map(r=>bmjEscape(bmjNormaliseAttendanceStatus(r.status))).join(" + "):"-";
+        const totalOT=records.reduce((total,r)=>total+(Number(r.ot)||0),0);
+        return `<tr>
+          <td>${index+1}</td>
+          <td><b>${bmjEscape(worker.name)}</b><br><small>${bmjEscape(worker.id)}</small></td>
+          <td>${bmjEscape(worker.role)}</td>
+          <td>${bmjEscape(worker.group||"Roshan Labours")}</td>
+          <td>${siteCell}</td>
+          <td>${inChargeCell}</td>
+          <td>${takenTimeCell}</td>
+          <td><b>${statusCell}</b></td>
+          <td>${totalOT.toFixed(1)}</td>
+        </tr>`;
+    }).join("");
+}
+</script>
+
+<script>
+/* =========================================================
+   FINAL FIX V4 - SELECT MEANS CLEAR / REMOVE SAVED ATTENDANCE
+   ========================================================= */
+function statusChanged(id){
+    const select=document.getElementById("status-"+id);
+    if(!select)return;
+    const status=select.value||"";
+
+    // Remember the user's current unsaved selection so a refresh/re-render
+    // does not immediately put the old saved status back into the dropdown.
+    if(typeof bmjDailyDraftStatus!=="undefined"){
+        bmjDailyDraftStatus[id]=status;
+    }
+
+    const v=status?statusTimes(status):["","", "-"];
+    const i=document.getElementById("in-"+id);
+    const o=document.getElementById("out-"+id);
+    const d=document.getElementById("days-"+id);
+    if(i)i.value=v[0]||"";
+    if(o)o.value=v[1]||"";
+    if(d)d.textContent=v[2]||"-";
+}
+
+function saveAttendance(id){
+    if(!currentUser)return;
+    const date=document.getElementById("attendanceDate")?.value;
+    const site=currentUser.role==="Admin"
+        ? document.getElementById("attendanceSite")?.value
+        : currentUser.site;
+    if(!site || site==="Select Site")return alert("Select working site first.");
+
+    const status=document.getElementById("status-"+id)?.value||"";
+    const existing=currentSiteRecord(id,date,site);
+
+    // SELECT = clear this site's attendance record.
+    // This removes an accidental A/P/etc. from the saved data.
+    if(!status){
+        if(existing){
+            const idx=attendance.indexOf(existing);
+            if(idx>=0)attendance.splice(idx,1);
+            saveData();
+            if(typeof bmjDailyDraftStatus!=="undefined")delete bmjDailyDraftStatus[id];
+            loadDailyAttendance();
+            renderWorkedAttendance();
+            renderMasterTable();
+        }
+        return;
+    }
+
+    const now=new Date();
+    const data={
+        workerId:id,
+        date,
+        site,
+        inCharge:currentUser.role==="Admin"?"Admin":(currentUser.name||currentUser.role),
+        takenBy:currentUser.role==="Admin"?"Admin":currentUser.role,
+        takenByUsername:currentUser.username,
+        takenAt:now.toISOString(),
+        status,
+        inTime:document.getElementById("in-"+id)?.value||"",
+        outTime:document.getElementById("out-"+id)?.value||"",
+        dutyCount:duty(status),
+        ot:Number(document.getElementById("ot-"+id)?.value||0),
+        updatedBy:currentUser.username,
+        updatedAt:Date.now()
+    };
+
+    if(existing)Object.assign(existing,data);
+    else attendance.push(data);
+
+    saveData();
+    if(typeof bmjDailyDraftStatus!=="undefined")delete bmjDailyDraftStatus[id];
+    loadDailyAttendance();
+    renderWorkedAttendance();
+    renderMasterTable();
+
+    const total=sameDayTotalForWorker(id,date);
+    const worker=labourers.find(w=>w.id===id);
+    if(worker && bmjRole()!=="Admin"){
+        const notice=document.getElementById("sameDayAttendanceNotice");
+        if(notice){
+            notice.textContent=`${worker.name}: ${site} saved. Total for today = ${total} Day(s).`;
+            notice.style.display="block";
+        }
+    }
+}
+
+function loadDailyAttendance(){
+    const table=document.getElementById("dailyTable");
+    if(!table)return;
+    const date=document.getElementById("attendanceDate")?.value||dateStr();
+    const site=bmjRole()==="Admin"
+        ? document.getElementById("attendanceSite")?.value
+        : currentUser?.site;
+    const role=document.getElementById("attendanceRole")?.value||"All";
+    const group=document.getElementById("attendanceGroup")?.value||"All";
+    const search=(document.getElementById("attendanceSearch")?.value||"").trim().toLowerCase();
+
+    if(!site || site==="Select Site"){
+        table.innerHTML='<tr><td colspan="10" class="empty">Please select your working site.</td></tr>';
+        const summary=document.getElementById("dailySummary");
+        if(summary)summary.textContent="Select Site";
+        return;
+    }
+
+    const list=labourers.filter(w=>{
+        const g=w.group||"Roshan Labours";
+        if(role!=="All"&&w.role!==role)return false;
+        if(group!=="All"&&g!==group)return false;
+        if(search && !(w.name||"").toLowerCase().includes(search) && !(w.id||"").toLowerCase().includes(search))return false;
+        return true;
+    });
+
+    const summary=document.getElementById("dailySummary");
+    if(summary)summary.textContent=site+" → "+list.length+" Labourers";
+    if(!list.length){
+        table.innerHTML='<tr><td colspan="10" class="empty">No labourers available for this site.</td></tr>';
+        return;
+    }
+
+    table.innerHTML=list.map((w,i)=>{
+        const record=currentSiteRecord(w.id,date,site);
+        const hasDraft=typeof bmjDailyDraftStatus!=="undefined" &&
+            Object.prototype.hasOwnProperty.call(bmjDailyDraftStatus,w.id);
+        const s=hasDraft?bmjDailyDraftStatus[w.id]:(record?.status||"");
+        const t=statusTimes(s);
+
+        // Show only the compact other-site attendance line requested by the user.
+        const otherSiteRecords=recordsForWorkerDate(w.id,date).filter(r=>r.site!==site && bmjIsWorkingStatus(r.status));
+        const otherSiteText=otherSiteRecords.length
+            ? otherSiteRecords.map(r=>`${bmjEscape(r.site)} ${bmjEscape(r.status||"")} ${bmjEscape(r.dutyCount||duty(r.status)||"")}`).join(" | ")
+            : "";
+
+        return `<tr>
+          <td>${i+1}</td>
+          <td>
+            <b>${bmjEscape(w.name)}</b><br><small>${bmjEscape(w.id)}</small>
+            ${otherSiteText?`<br><small class="compactSiteNote">${otherSiteText}</small>`:""}
+          </td>
+          <td>${bmjEscape(w.role)}</td>
+          <td>${bmjEscape(w.group||"Roshan Labours")}</td>
+          <td>
+            <select id="status-${bmjEscape(w.id)}" onchange="statusChanged('${bmjEscape(w.id)}')">
+              <option value="" ${s===""?"selected":""}>Select</option>
+              <option value="P" ${s==="P"?"selected":""}>P - Present (1 Day)</option>
+              <option value="A" ${s==="A"?"selected":""}>A - Absent (0 Day)</option>
+              <option value="HD" ${s==="HD"?"selected":""}>HD - Half Day (0.5 Day)</option>
+              <option value="P1/2" ${s==="P1/2"?"selected":""}>P1/2 - 1.5 Days</option>
+              <option value="PP" ${s==="PP"?"selected":""}>PP - 2 Days</option>
+              <option value="PPP" ${s==="PPP"?"selected":""}>PPP - 3 Days</option>
+            </select>
+          </td>
+          <td><input id="in-${bmjEscape(w.id)}" type="time" value="${bmjEscape(hasDraft?((statusTimes(s)||[])[0]||""):(record?.inTime||t[0]||""))}"></td>
+          <td><input id="out-${bmjEscape(w.id)}" type="time" value="${bmjEscape(hasDraft?((statusTimes(s)||[])[1]||""):(record?.outTime||t[1]||""))}"></td>
+          <td><b id="days-${bmjEscape(w.id)}">${bmjEscape(hasDraft?duty(s):(record?.dutyCount||duty(s)||"-"))}</b></td>
+          <td><input id="ot-${bmjEscape(w.id)}" type="number" min="0" step="0.5" value="${record?.ot??0}"></td>
+          <td><button class="green" onclick="saveAttendance('${bmjEscape(w.id)}')">Save</button></td>
+        </tr>`;
+    }).join("");
+}
+
+/* Admin dashboard: working attendance at ANY site takes priority over A. */
+function updateDashboard(){
+    if(!currentUser || bmjRole()!=="Admin")return;
+    const today=dateStr();
+    document.getElementById("totalLabourers").textContent=labourers.length;
+    let present=0,absent=0,ot=0;
+    labourers.forEach(w=>{
+        const rows=bmjWorkerTodayRecords(w.id,today);
+        const working=rows.some(r=>bmjIsWorkingStatus(r.status)||Number(r.dutyCount||0)>0);
+        const hasAbsent=rows.some(r=>bmjIsAbsentStatus(r.status));
+        if(working)present++;
+        else if(hasAbsent)absent++;
+        ot+=rows.reduce((sum,r)=>sum+(Number(r.ot)||0),0);
+    });
+    document.getElementById("presentToday").textContent=present;
+    document.getElementById("absentToday").textContent=absent;
+    document.getElementById("otToday").textContent=ot.toFixed(1);
+    renderMasterTable();
+}
 </script>
 
 </body>
