@@ -773,13 +773,28 @@ td input,td select{
     <div class="panelHead">
 
         <h2>
-            Today's Master Attendance
+            Master Attendance
         </h2>
 
     </div>
 
 
     <div class="filters">
+
+        <div>
+
+            <label>
+                Attendance Date
+            </label>
+
+            <input
+                id="dashboardDate"
+                type="date"
+                onchange="updateDashboard()"
+            >
+
+        </div>
+
 
         <div>
 
@@ -1441,14 +1456,20 @@ td input,td select{
                 id="weeklySite"
                 onchange="generateWeekly()"
             >
-
+                <option value="All">All</option>
                 <option>RMS</option>
                 <option>Extruder</option>
                 <option>VTP New</option>
                 <option>RTP</option>
-
             </select>
 
+        </div>
+
+        <div>
+            <label>Labour Group</label>
+            <select id="weeklyGroup" onchange="generateWeekly()">
+                <option value="All">All</option>
+            </select>
         </div>
 
     </div>
@@ -6878,7 +6899,284 @@ function updateDashboard(){
     document.getElementById("otToday").textContent=ot.toFixed(1);
     renderMasterTable();
 }
+
+/* =========================================================
+   FINAL DASHBOARD DATE SELECTOR FIX (V5)
+   Admin can select any date and see that day's records,
+   including In-Charge and exact Date & Time Taken.
+   Firebase attendance data is not changed by selecting a date.
+   ========================================================= */
+(function(){
+    const dateInput=document.getElementById("dashboardDate");
+    if(dateInput && !dateInput.value) dateInput.value=dateStr();
+})();
+
+function bmjDashboardSelectedDate(){
+    return document.getElementById("dashboardDate")?.value || dateStr();
+}
+
+function updateDashboard(){
+    if(!currentUser || bmjRole()!=="Admin") return;
+
+    const selectedDate=bmjDashboardSelectedDate();
+    const rows=attendance.filter(r=>r.date===selectedDate);
+    const presentCodes=["P","HD","P1/2","PP","PPP"];
+
+    document.getElementById("totalLabourers").textContent=labourers.length;
+
+    let present=0, absent=0, ot=0;
+    labourers.forEach(w=>{
+        const workerRows=rows.filter(r=>String(r.workerId)===String(w.id));
+        const working=workerRows.some(r=>bmjIsWorkingStatus(r.status) || Number(r.dutyCount||0)>0);
+        const hasAbsent=workerRows.some(r=>bmjIsAbsentStatus(r.status));
+        if(working) present++;
+        else if(hasAbsent) absent++;
+        ot += workerRows.reduce((sum,r)=>sum+Number(r.ot||0),0);
+    });
+
+    document.getElementById("presentToday").textContent=present;
+    document.getElementById("absentToday").textContent=absent;
+    document.getElementById("otToday").textContent=ot.toFixed(1);
+
+    const presentLabel=document.querySelector("#presentToday")?.parentElement?.querySelector(".label");
+    const absentLabel=document.querySelector("#absentToday")?.parentElement?.querySelector(".label");
+    const otLabel=document.querySelector("#otToday")?.parentElement?.querySelector(".label");
+    if(presentLabel) presentLabel.textContent="Present";
+    if(absentLabel) absentLabel.textContent="Absent";
+    if(otLabel) otLabel.textContent="OT";
+
+    renderMasterTable();
+}
+
+function renderMasterTable(){
+    if(!currentUser || bmjRole()!=="Admin") return;
+
+    const selectedDate=bmjDashboardSelectedDate();
+    const selectedSite=document.getElementById("dashboardSite")?.value||"All";
+    const selectedRole=document.getElementById("dashboardRole")?.value||"All";
+    const selectedGroup=document.getElementById("dashboardGroup")?.value||"All";
+    const selectedStatus=document.getElementById("dashboardStatus")?.value||"All";
+    const search=(document.getElementById("dashboardSearch")?.value||"").trim().toLowerCase();
+
+    const list=labourers.filter(worker=>{
+        const workerGroup=worker.group||"Roshan Labours";
+        if(selectedRole!=="All" && worker.role!==selectedRole) return false;
+        if(selectedGroup!=="All" && workerGroup!==selectedGroup) return false;
+        if(search){
+            const nameMatch=(worker.name||"").toLowerCase().includes(search);
+            const idMatch=(worker.id||"").toLowerCase().includes(search);
+            if(!nameMatch && !idMatch) return false;
+        }
+
+        const allDate=bmjWorkerTodayRecords(worker.id,selectedDate);
+        const records=allDate.filter(r=>selectedSite==="All" || r.site===selectedSite);
+        const working=allDate.some(r=>bmjIsWorkingStatus(r.status) || Number(r.dutyCount||0)>0);
+        const hasAbsent=allDate.some(r=>bmjIsAbsentStatus(r.status));
+
+        if(selectedStatus!=="All"){
+            if(selectedStatus==="NONE"){
+                if(allDate.length) return false;
+            }else if(selectedStatus==="A"){
+                if(!hasAbsent || working) return false;
+            }else if(["P","HD","P1/2","PP","PPP"].includes(selectedStatus)){
+                if(!allDate.some(r=>bmjNormaliseAttendanceStatus(r.status)===selectedStatus)) return false;
+            }else{
+                if(!records.some(r=>bmjNormaliseAttendanceStatus(r.status)===selectedStatus)) return false;
+            }
+        }
+
+        if(selectedSite!=="All" && !records.length) return false;
+        return true;
+    });
+
+    const table=document.getElementById("masterTable");
+    const summary=document.getElementById("masterSummary");
+    if(!table || !summary) return;
+
+    summary.textContent=list.length+" Labourers • "+selectedDate.split("-").reverse().join("-");
+
+    if(!list.length){
+        table.innerHTML='<tr><td colspan="9" class="empty">No labourers found for this date.</td></tr>';
+        return;
+    }
+
+    table.innerHTML=list.map((worker,index)=>{
+        const records=bmjWorkerTodayRecords(worker.id,selectedDate)
+            .filter(r=>selectedSite==="All" || r.site===selectedSite);
+
+        const siteCell=records.length
+            ? records.map(r=>bmjEscape(r.site||"-")).join(" + ")
+            : "-";
+        const inChargeCell=records.length
+            ? records.map(r=>bmjEscape(r.inCharge || r.incharge || "-")).join(" + ")
+            : "-";
+        const takenTimeCell=records.length
+            ? records.map(r=>bmjEscape(formatAttendanceTaken(r))).join(" + ")
+            : "-";
+        const statusCell=records.length
+            ? records.map(r=>bmjEscape(bmjNormaliseAttendanceStatus(r.status))).join(" + ")
+            : "-";
+        const totalOT=records.reduce((total,r)=>total+Number(r.ot||0),0);
+
+        return `<tr>
+          <td>${index+1}</td>
+          <td><b>${bmjEscape(worker.name)}</b><br><small>${bmjEscape(worker.id)}</small></td>
+          <td>${bmjEscape(worker.role)}</td>
+          <td>${bmjEscape(worker.group||"Roshan Labours")}</td>
+          <td>${siteCell}</td>
+          <td>${inChargeCell}</td>
+          <td>${takenTimeCell}</td>
+          <td><b>${statusCell}</b></td>
+          <td>${totalOT.toFixed(1)}</td>
+        </tr>`;
+    }).join("");
+}
+
 </script>
 
+
+<script>
+/* FINAL DASHBOARD SITE DATE FIX
+   Site cards and their counts follow the Admin-selected Dashboard date.
+*/
+function bmjDashboardSiteDate(){
+    return document.getElementById("dashboardDate")?.value || dateStr();
+}
+
+function renderSiteSummary(){
+    const box=document.getElementById("siteSummary");
+    if(!box) return;
+    const selectedDate=bmjDashboardSiteDate();
+    const heading=document.querySelector("#siteSummary")?.closest(".panel")?.querySelector(".panelHead h2");
+    if(heading){
+        heading.textContent = selectedDate===dateStr() ? "Today's Sites" : "Sites for Selected Date";
+    }
+    box.innerHTML=sites.map(site=>{
+        const records=attendance.filter(r=>r.date===selectedDate && r.site===site);
+        const labourIds=new Set(records.map(r=>r.workerId));
+        const days=records.reduce((total,r)=>{
+            const n=parseFloat(String(r.dutyCount||"").replace(/[^0-9.]/g,""));
+            return total+(Number.isFinite(n)?n:0);
+        },0);
+        return `<div class="siteCard">
+            <h2>${bmjEscape(site)}</h2>
+            <p>Attendance Records</p>
+            <div class="siteNumber">${labourIds.size}</div>
+            <p>Total Days: <b>${days}</b></p>
+        </div>`;
+    }).join("");
+}
+
+function updateSiteCounts(){
+    const selectedDate=bmjDashboardSiteDate();
+    const ids=["rmsCount","extruderCount","vtpCount","rtpCount"];
+    ids.forEach((id,i)=>{
+        const el=document.getElementById(id);
+        if(el) el.textContent=attendance.filter(r=>r.date===selectedDate && r.site===sites[i]).length;
+    });
+    renderSiteSummary();
+}
+
+/* When Dashboard date changes, refresh ALL date-dependent dashboard sections. */
+(function(){
+    const d=document.getElementById("dashboardDate");
+    if(d){
+        d.addEventListener("change", function(){
+            updateDashboard();
+            updateSiteCounts();
+        });
+    }
+})();
+</script>
+
+<script>
+/* BMJ V10 - 7-Day Sheet Labour Group filter, using the real labourGroups array */
+(function(){
+    function refreshWeeklyGroup(){
+        const el=document.getElementById("weeklyGroup");
+        if(!el) return;
+        const old=el.value||"All";
+        const groups=[...new Set((typeof labourGroups!=="undefined" ? labourGroups : []).filter(Boolean))];
+        el.innerHTML='<option value="All">All</option>'+groups.map(g=>`<option value="${bmjEscape(g)}">${bmjEscape(g)}</option>`).join("");
+        el.value=groups.includes(old)?old:"All";
+    }
+
+    const oldRefreshBMJSelects=window.refreshBMJSelects;
+    window.refreshBMJSelects=function(){
+        if(typeof oldRefreshBMJSelects==="function") oldRefreshBMJSelects();
+        refreshWeeklyGroup();
+    };
+
+    const oldGenerate=window.generateWeekly;
+    window.generateWeekly=function(){
+        if(typeof oldGenerate!=="function") return;
+        oldGenerate();
+
+        const group=document.getElementById("weeklyGroup")?.value||"All";
+        if(group==="All") return;
+
+        const startValue=document.getElementById("weekStart")?.value;
+        const selectedSite=document.getElementById("weeklySite")?.value||"All";
+        if(!startValue) return;
+
+        const start=new Date(startValue+"T00:00:00");
+        const ids=new Set();
+        for(let i=0;i<7;i++){
+            const d=new Date(start);
+            d.setDate(start.getDate()+i);
+            const ds=dateStr(d);
+            attendance.filter(r=>{
+                if(r.date!==ds || (selectedSite!=="All" && r.site!==selectedSite)) return false;
+                const w=labourers.find(x=>x.id===r.workerId);
+                return (w?.group||"Roshan Labours")===group;
+            }).forEach(r=>ids.add(r.workerId));
+        }
+
+        const head=document.getElementById("weeklyHead");
+        const body=document.getElementById("weeklyBody");
+        if(!head||!body) return;
+
+        let h="<tr><th>Labourer</th>";
+        for(let i=0;i<7;i++){
+            const d=new Date(start);
+            d.setDate(start.getDate()+i);
+            h+=`<th>${dateStr(d)}</th>`;
+        }
+        h+="<th>Total OT</th></tr>";
+        head.innerHTML=h;
+
+        body.innerHTML=[...ids].map(id=>{
+            const w=labourers.find(x=>x.id===id);
+            if(!w) return "";
+            let totalOT=0;
+            let row=`<tr><td><b>${bmjEscape(w.name)}</b><br><small>${bmjEscape(w.group||"Roshan Labours")}</small></td>`;
+
+            for(let i=0;i<7;i++){
+                const d=new Date(start);
+                d.setDate(start.getDate()+i);
+                const ds=dateStr(d);
+                const rs=attendance.filter(r=>r.workerId===id && r.date===ds && (selectedSite==="All" || r.site===selectedSite));
+                if(!rs.length){
+                    row+="<td>-</td>";
+                    continue;
+                }
+                const statuses=[...new Set(rs.map(r=>r.status).filter(Boolean))];
+                const ot=rs.reduce((a,r)=>a+Number(r.ot||0),0);
+                totalOT+=ot;
+                const st=selectedSite==="All" ? [...new Set(rs.map(r=>r.site).filter(Boolean))].join(" + ") : selectedSite;
+                row+=`<td><small>${bmjEscape(st)}</small><br><b>${bmjEscape(statuses.join(" + "))}</b><br><small>OT: ${ot.toFixed(1)}</small></td>`;
+            }
+            return row+`<td><b>${totalOT.toFixed(1)}</b></td></tr>`;
+        }).join("") || '<tr><td colspan="10" class="empty">No attendance for this week.</td></tr>';
+    };
+
+    document.addEventListener("DOMContentLoaded",function(){
+        setTimeout(function(){
+            refreshWeeklyGroup();
+            window.generateWeekly();
+        },700);
+    });
+})();
+</script>
 </body>
 </html>
