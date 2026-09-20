@@ -503,6 +503,7 @@ td input,td select{
 .accountNote{padding:12px 14px;border-radius:8px;background:#f1f5f9;margin-top:12px;}
 
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 
 <body>
@@ -1216,11 +1217,7 @@ td input,td select{
                     <th>#</th>
                     <th>Labourer</th>
                     <th>Category</th>
-                    <th>Labour Group</th>
                     <th>Status</th>
-                    <th>In</th>
-                    <th>Out</th>
-                    <th>Days</th>
                     <th>OT Hours</th>
                     <th>Save</th>
 
@@ -1472,6 +1469,17 @@ td input,td select{
             </select>
         </div>
 
+        <div id="weeklySearchWrap">
+            <label>Search</label>
+            <input id="weeklySearch" type="search" placeholder="Search labour" oninput="generateWeekly()">
+        </div>
+
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+        <button id="weeklyPngBtn" class="green" type="button" style="display:none;" onclick="downloadWeeklyPNG()">
+            📷 Download PNG
+        </button>
     </div>
 
 
@@ -6818,7 +6826,7 @@ function loadDailyAttendance(){
     const search=(document.getElementById("attendanceSearch")?.value||"").trim().toLowerCase();
 
     if(!site || site==="Select Site"){
-        table.innerHTML='<tr><td colspan="10" class="empty">Please select your working site.</td></tr>';
+        table.innerHTML='<tr><td colspan="6" class="empty">Please select your working site.</td></tr>';
         const summary=document.getElementById("dailySummary");
         if(summary)summary.textContent="Select Site";
         return;
@@ -6834,8 +6842,9 @@ function loadDailyAttendance(){
 
     const summary=document.getElementById("dailySummary");
     if(summary)summary.textContent=site+" → "+list.length+" Labourers";
+
     if(!list.length){
-        table.innerHTML='<tr><td colspan="10" class="empty">No labourers available for this site.</td></tr>';
+        table.innerHTML='<tr><td colspan="6" class="empty">No labourers available for this site.</td></tr>';
         return;
     }
 
@@ -6844,41 +6853,39 @@ function loadDailyAttendance(){
         const hasDraft=typeof bmjDailyDraftStatus!=="undefined" &&
             Object.prototype.hasOwnProperty.call(bmjDailyDraftStatus,w.id);
         const s=hasDraft?bmjDailyDraftStatus[w.id]:(record?.status||"");
-        const t=statusTimes(s);
 
-        // Show only the compact other-site attendance line requested by the user.
-        const otherSiteRecords=recordsForWorkerDate(w.id,date).filter(r=>r.site!==site && bmjIsWorkingStatus(r.status));
+        // Keep the labour group under the labourer's name, not as a separate column.
+        const otherSiteRecords=recordsForWorkerDate(w.id,date)
+            .filter(r=>r.site!==site && bmjIsWorkingStatus(r.status));
         const otherSiteText=otherSiteRecords.length
-            ? otherSiteRecords.map(r=>`${bmjEscape(r.site)} ${bmjEscape(r.status||"")} ${bmjEscape(r.dutyCount||duty(r.status)||"")}`).join(" | ")
+            ? otherSiteRecords.map(r=>`${bmjEscape(r.site)} ${bmjEscape(r.status||"")}`).join(" | ")
             : "";
 
         return `<tr>
           <td>${i+1}</td>
           <td>
-            <b>${bmjEscape(w.name)}</b><br><small>${bmjEscape(w.id)}</small>
-            ${otherSiteText?`<br><small class="compactSiteNote">${otherSiteText}</small>`:""}
+            <b>${bmjEscape(w.name)}</b><br>
+            <small>${bmjEscape(w.group||"Roshan Labours")}</small>
+            ${otherSiteText?`<br><small class="compactSiteNote">Other site today: ${otherSiteText}</small>`:""}
           </td>
           <td>${bmjEscape(w.role)}</td>
-          <td>${bmjEscape(w.group||"Roshan Labours")}</td>
           <td>
             <select id="status-${bmjEscape(w.id)}" onchange="statusChanged('${bmjEscape(w.id)}')">
               <option value="" ${s===""?"selected":""}>Select</option>
-              <option value="P" ${s==="P"?"selected":""}>P - Present (1 Day)</option>
-              <option value="A" ${s==="A"?"selected":""}>A - Absent (0 Day)</option>
-              <option value="HD" ${s==="HD"?"selected":""}>HD - Half Day (0.5 Day)</option>
-              <option value="P1/2" ${s==="P1/2"?"selected":""}>P1/2 - 1.5 Days</option>
-              <option value="PP" ${s==="PP"?"selected":""}>PP - 2 Days</option>
-              <option value="PPP" ${s==="PPP"?"selected":""}>PPP - 3 Days</option>
+              <option value="HD" ${s==="HD"?"selected":""}>HD</option>
+              <option value="P" ${s==="P"?"selected":""}>P</option>
+              <option value="P1/2" ${s==="P1/2"?"selected":""}>P1/2</option>
+              <option value="PP" ${s==="PP"?"selected":""}>PP</option>
+              <option value="PPP" ${s==="PPP"?"selected":""}>PPP</option>
+              <option value="A" ${s==="A"?"selected":""}>A</option>
             </select>
           </td>
-          <td><input id="in-${bmjEscape(w.id)}" type="time" value="${bmjEscape(hasDraft?((statusTimes(s)||[])[0]||""):(record?.inTime||t[0]||""))}"></td>
-          <td><input id="out-${bmjEscape(w.id)}" type="time" value="${bmjEscape(hasDraft?((statusTimes(s)||[])[1]||""):(record?.outTime||t[1]||""))}"></td>
-          <td><b id="days-${bmjEscape(w.id)}">${bmjEscape(hasDraft?duty(s):(record?.dutyCount||duty(s)||"-"))}</b></td>
           <td><input id="ot-${bmjEscape(w.id)}" type="number" min="0" step="0.5" value="${record?.ot??0}"></td>
           <td><button class="green" onclick="saveAttendance('${bmjEscape(w.id)}')">Save</button></td>
         </tr>`;
     }).join("");
 }
+
 
 /* Admin dashboard: working attendance at ANY site takes priority over A. */
 function updateDashboard(){
@@ -7175,6 +7182,825 @@ function updateSiteCounts(){
             refreshWeeklyGroup();
             window.generateWeekly();
         },700);
+    });
+})();
+</script>
+
+<script>
+/* =========================================================
+   V11 FIELD USER UI UPDATE
+   - Engineer/Supervisor get 7-Day Sheet
+   - Field Daily Attendance: Name, Group, Attendance, OT, Save
+   - Compact status codes only
+   - No In/Out/Days for field users
+   - Saved rows/buttons turn blue
+   ========================================================= */
+(function(){
+    window.bmjFieldSaved = window.bmjFieldSaved || {};
+
+    function fieldKey(id,date,site){
+        return String(id)+'|'+String(date)+'|'+String(site);
+    }
+
+    function isFieldUser(){
+        return !!currentUser && bmjRole() !== 'Admin';
+    }
+
+    /* Make the Admin 7-Day Sheet available to engineers/supervisors too. */
+    function updateFieldWeeklyNav(){
+        const btn=document.querySelector('button[onclick="showPage(\'weekly\',this)"]');
+        if(btn) btn.style.display = isFieldUser() ? 'block' : '';
+    }
+
+    const oldSetupV11=window.setupInterface;
+    window.setupInterface=function(){
+        if(typeof oldSetupV11==='function') oldSetupV11();
+        updateFieldWeeklyNav();
+        if(isFieldUser()){
+            const siteEl=document.getElementById('weeklySite');
+            if(siteEl){
+                siteEl.value=currentUser.site||'All';
+                siteEl.disabled=true;
+            }
+            setTimeout(function(){
+                refreshWeeklyGroupV11();
+                generateWeeklyV11();
+            },150);
+        }
+    };
+
+    function refreshWeeklyGroupV11(){
+        const el=document.getElementById('weeklyGroup');
+        if(!el)return;
+        const old=el.value||'All';
+        const groups=[...new Set((typeof labourGroups!=='undefined'?labourGroups:[]).filter(Boolean))];
+        el.innerHTML='<option value="All">All</option>'+groups.map(g=>`<option value="${bmjEscape(g)}">${bmjEscape(g)}</option>`).join('');
+        el.value=groups.includes(old)?old:'All';
+    }
+
+    window.refreshWeeklyGroupV11=refreshWeeklyGroupV11;
+
+    /* Weekly sheet for Admin + Engineer + Supervisor. Field users are locked to their site. */
+    window.generateWeeklyV11=function(){
+        if(!currentUser)return;
+        const startValue=document.getElementById('weekStart')?.value;
+        if(!startValue)return;
+        const siteEl=document.getElementById('weeklySite');
+        const groupEl=document.getElementById('weeklyGroup');
+        const site=isFieldUser() ? (currentUser.site||'All') : (siteEl?.value||'All');
+        const group=groupEl?.value||'All';
+        const start=new Date(startValue+'T00:00:00');
+        const ids=new Set();
+
+        for(let i=0;i<7;i++){
+            const d=new Date(start);
+            d.setDate(start.getDate()+i);
+            const ds=dateStr(d);
+            attendance.filter(r=>{
+                if(r.date!==ds)return false;
+                if(site!=='All' && r.site!==site)return false;
+                const w=labourers.find(x=>String(x.id)===String(r.workerId));
+                if(!w)return false;
+                return group==='All' || (w.group||'Roshan Labours')===group;
+            }).forEach(r=>ids.add(r.workerId));
+        }
+
+        let head='<tr><th>Labourer</th>';
+        for(let i=0;i<7;i++){
+            const d=new Date(start); d.setDate(start.getDate()+i);
+            head+=`<th>${dateStr(d)}</th>`;
+        }
+        head+='<th>Total OT</th></tr>';
+        const h=document.getElementById('weeklyHead');
+        const b=document.getElementById('weeklyBody');
+        if(!h||!b)return;
+        h.innerHTML=head;
+
+        b.innerHTML=[...ids].map(id=>{
+            const w=labourers.find(x=>String(x.id)===String(id));
+            if(!w)return '';
+            let totalOT=0;
+            let row=`<tr><td><b>${bmjEscape(w.name)}</b><br><small>${bmjEscape(w.group||'Roshan Labours')}</small></td>`;
+            for(let i=0;i<7;i++){
+                const d=new Date(start); d.setDate(start.getDate()+i);
+                const ds=dateStr(d);
+                const rs=attendance.filter(r=>String(r.workerId)===String(id)&&r.date===ds&&(site==='All'||r.site===site));
+                if(!rs.length){row+='<td>-</td>';continue;}
+                const statuses=[...new Set(rs.map(r=>r.status).filter(Boolean))];
+                const ot=rs.reduce((a,r)=>a+Number(r.ot||0),0);
+                totalOT+=ot;
+                const st=site==='All'?[...new Set(rs.map(r=>r.site).filter(Boolean))].join(' + '):site;
+                row+=`<td><small>${bmjEscape(st)}</small><br><b>${bmjEscape(statuses.join(' + '))}</b><br><small>OT: ${ot.toFixed(1)}</small></td>`;
+            }
+            return row+`<td><b>${totalOT.toFixed(1)}</b></td></tr>`;
+        }).join('') || '<tr><td colspan="9" class="empty">No attendance for this week.</td></tr>';
+    };
+
+    /* Replace weekly generator after the existing V10 wrappers have loaded. */
+    window.generateWeekly=function(){
+        generateWeeklyV11();
+    };
+
+    /* Field-user Daily Attendance only. Admin keeps the existing detailed table. */
+    function loadFieldDailyAttendance(){
+        const table=document.getElementById('dailyTable');
+        if(!table||!isFieldUser())return false;
+        const date=document.getElementById('attendanceDate')?.value||dateStr();
+        const site=currentUser.site;
+        const group=document.getElementById('attendanceGroup')?.value||'All';
+        const search=(document.getElementById('attendanceSearch')?.value||'').trim().toLowerCase();
+
+        if(!site || site==='Select Site'){
+            table.innerHTML='<tr><td colspan="6" class="empty">Please select your working site.</td></tr>';
+            return true;
+        }
+
+        const list=labourers.filter(w=>{
+            const g=w.group||'Roshan Labours';
+            if(group!=='All'&&g!==group)return false;
+            if(search && !(w.name||'').toLowerCase().includes(search) && !(w.id||'').toLowerCase().includes(search))return false;
+            return true;
+        });
+
+        const summary=document.getElementById('dailySummary');
+        if(summary)summary.textContent=site+' → '+list.length+' Labourers';
+
+        table.innerHTML=list.map((w,i)=>{
+            const record=currentSiteRecord(w.id,date,site);
+            const status=record?.status||'';
+            const saved=!!record;
+            const key=fieldKey(w.id,date,site);
+            const savedFlash=bmjFieldSaved[key];
+            const buttonBlue=saved || savedFlash;
+            return `<tr>
+                <td>${i+1}</td>
+                <td><b>${bmjEscape(w.name)}</b><br><small>${bmjEscape(w.id)}</small></td>
+                <td><b>${bmjEscape(w.group||'Roshan Labours')}</b></td>
+                <td>
+                    <select id="status-${bmjEscape(w.id)}" onchange="statusChanged('${bmjEscape(w.id)}')">
+                        <option value="" ${status===''?'selected':''}>Select</option>
+                        <option value="HD" ${status==='HD'?'selected':''}>HD</option>
+                        <option value="P" ${status==='P'?'selected':''}>P</option>
+                        <option value="P1/2" ${status==='P1/2'?'selected':''}>P1/2</option>
+                        <option value="PP" ${status==='PP'?'selected':''}>PP</option>
+                        <option value="PPP" ${status==='PPP'?'selected':''}>PPP</option>
+                        <option value="A" ${status==='A'?'selected':''}>A</option>
+                    </select>
+                </td>
+                <td><input id="ot-${bmjEscape(w.id)}" type="number" min="0" step="0.5" value="${record?.ot??0}"></td>
+                <td><button class="${buttonBlue?'blue':'green'}" onclick="saveAttendance('${bmjEscape(w.id)}')">${buttonBlue?'Saved':'Save'}</button></td>
+            </tr>`;
+        }).join('') || '<tr><td colspan="6" class="empty">No labourers available.</td></tr>';
+        return true;
+    }
+
+    const oldLoadV11=window.loadDailyAttendance;
+    window.loadDailyAttendance=function(){
+        if(loadFieldDailyAttendance())return;
+        if(typeof oldLoadV11==='function')oldLoadV11();
+    };
+
+    /* Field status change: no automatic In/Out/Days fields are used anymore. */
+    const oldStatusV11=window.statusChanged;
+    window.statusChanged=function(id){
+        if(isFieldUser()){
+            if(typeof bmjDailyDraftStatus!=='undefined')bmjDailyDraftStatus[id]=document.getElementById('status-'+id)?.value||'';
+            return;
+        }
+        if(typeof oldStatusV11==='function')oldStatusV11(id);
+    };
+
+    /* Save wrapper: after successful save, immediately redraw with a blue Saved button. */
+    const oldSaveV11=window.saveAttendance;
+    window.saveAttendance=async function(id){
+        if(!isFieldUser())return oldSaveV11(id);
+        const date=document.getElementById('attendanceDate')?.value||dateStr();
+        const site=currentUser.site;
+        const before=currentSiteRecord(id,date,site);
+        await oldSaveV11(id);
+        const after=currentSiteRecord(id,date,site);
+        if(after){
+            bmjFieldSaved[fieldKey(id,date,site)]=true;
+            loadFieldDailyAttendance();
+        }
+    };
+
+    document.addEventListener('DOMContentLoaded',function(){
+        setTimeout(function(){
+            if(isFieldUser()){
+                updateFieldWeeklyNav();
+                refreshWeeklyGroupV11();
+                const ws=document.getElementById('weeklySite');
+                if(ws){ws.value=currentUser.site||'All';ws.disabled=true;}
+            }
+        },1000);
+    });
+})();
+</script>
+
+
+<script>
+/* =========================================================
+   BMJ V19 - FIELD USER FIXES ONLY
+   Base: V10. Admin functions/pages are left untouched.
+   Changes only:
+   1) Engineer/Supervisor Daily Attendance simplified.
+   2) Engineer/Supervisor 7-Day Sheet access using the existing
+      Admin 7-Day Sheet page/design.
+   3) Same-day other-site note under labour name: SITE STATUS only.
+   4) Field Save button changes Green Save -> Blue Saved.
+========================================================= */
+(function(){
+    const originalLoadDailyAttendance = loadDailyAttendance;
+    const originalSaveAttendance = saveAttendance;
+    const originalGenerateWeekly = generateWeekly;
+    const originalShowPage = showPage;
+    const originalSetupInterface = setupInterface;
+
+    function fieldUser(){
+        return !!currentUser && currentUser.role !== "Admin";
+    }
+
+    function fieldSite(){
+        const el=document.getElementById("supervisorSite");
+        return (currentUser?.site || el?.value || "").trim();
+    }
+
+    function fieldStatusLabel(status){
+        return status || "";
+    }
+
+    function fieldStatusOptions(selected){
+        const opts=["HD","P","P1/2","PP","PPP","A"];
+        return '<option value="">Select</option>'+opts.map(x=>
+            `<option value="${x}" ${selected===x?"selected":""}>${x}</option>`
+        ).join("");
+    }
+
+    function fieldOtherSiteText(workerId,date,currentSite){
+        const rows=attendance.filter(r=>
+            r.workerId===workerId &&
+            r.date===date &&
+            r.site &&
+            r.site!==currentSite &&
+            r.status
+        );
+        if(!rows.length)return "";
+        return rows.map(r=>`${bmjEscape(r.site)} ${bmjEscape(r.status)}`).join("<br>");
+    }
+
+    function renderFieldDailyAttendance(){
+        const table=document.getElementById("dailyTable");
+        if(!table)return;
+
+        const date=document.getElementById("attendanceDate")?.value || dateStr();
+        const site=fieldSite();
+        const role=document.getElementById("attendanceRole")?.value || "All";
+        const group=document.getElementById("attendanceGroup")?.value || "All";
+        const search=(document.getElementById("attendanceSearch")?.value || "").trim().toLowerCase();
+
+        if(!site || site==="Select Site"){
+            table.innerHTML='<tr><td colspan="7" class="empty">Please select your working site.</td></tr>';
+            const summary=document.getElementById("dailySummary");
+            if(summary)summary.textContent="Select Site";
+            return;
+        }
+
+        const list=labourers.filter(w=>{
+            const g=w.group || "Roshan Labours";
+            if(role!=="All" && w.role!==role)return false;
+            if(group!=="All" && g!==group)return false;
+            if(search && !(w.name||"").toLowerCase().includes(search) && !(w.id||"").toLowerCase().includes(search))return false;
+            return true;
+        });
+
+        const summary=document.getElementById("dailySummary");
+        if(summary)summary.textContent=`${site} → ${list.length} Labourers`;
+
+        if(!list.length){
+            table.innerHTML='<tr><td colspan="7" class="empty">No labourers available.</td></tr>';
+            return;
+        }
+
+        table.innerHTML=list.map((w,i)=>{
+            const record=currentSiteRecord(w.id,date,site);
+            const status=record?.status || bmjDailyDraftStatus[w.id] || "";
+            const other=fieldOtherSiteText(w.id,date,site);
+            const buttonClass=record ? "blue" : "green";
+            const buttonText=record ? "Saved" : "Save";
+            return `<tr>
+                <td>${i+1}</td>
+                <td>
+                    <b>${bmjEscape(w.name)}</b>
+                    ${other ? `<br><small style="color:#2563eb;line-height:1.4">${other}</small>` : ""}
+                </td>
+                <td>${bmjEscape(w.role || "")}</td>
+                <td>
+                    <select id="status-${bmjEscape(w.id)}" onchange="statusChanged('${bmjEscape(w.id)}')">
+                        ${fieldStatusOptions(status)}
+                    </select>
+                </td>
+                <td><input id="ot-${bmjEscape(w.id)}" type="number" min="0" step="0.5" value="${record?.ot ?? 0}"></td>
+                <td><button id="save-${bmjEscape(w.id)}" class="${buttonClass}" onclick="saveAttendance('${bmjEscape(w.id)}')">${buttonText}</button></td>
+                <td>${bmjEscape(w.group || "Roshan Labours")}</td>
+            </tr>`;
+        }).join("");
+    }
+
+    function fieldSaveAttendance(id){
+        if(!currentUser)return;
+        const date=document.getElementById("attendanceDate")?.value || dateStr();
+        const site=fieldSite();
+        if(!site || site==="Select Site"){
+            alert("Select working site first.");
+            return;
+        }
+
+        const statusEl=document.getElementById("status-"+id);
+        const status=statusEl?.value || "";
+        if(!status){
+            alert("Select attendance status.");
+            return;
+        }
+
+        const existing=currentSiteRecord(id,date,site);
+        const now=new Date();
+        const data={
+            workerId:id,
+            date,
+            site,
+            inCharge:currentUser.name || currentUser.role,
+            takenBy:currentUser.role,
+            takenByUsername:currentUser.username,
+            takenAt:now.toISOString(),
+            status,
+            inTime:"",
+            outTime:"",
+            dutyCount:duty(status),
+            ot:Number(document.getElementById("ot-"+id)?.value || 0),
+            updatedBy:currentUser.username,
+            updatedAt:Date.now()
+        };
+
+        if(existing)Object.assign(existing,data);
+        else attendance.push(data);
+
+        saveData();
+        delete bmjDailyDraftStatus[id];
+
+        const btn=document.getElementById("save-"+id);
+        if(btn){
+            btn.className="blue";
+            btn.textContent="Saved";
+        }
+
+        renderFieldDailyAttendance();
+
+        const savedBtn=document.getElementById("save-"+id);
+        if(savedBtn){
+            savedBtn.className="blue";
+            savedBtn.textContent="Saved";
+        }
+    }
+
+    function fieldGenerateWeekly(){
+        const startValue=document.getElementById("weekStart")?.value;
+        if(!startValue)return;
+        const site=document.getElementById("weeklySite")?.value || "All";
+        const group=document.getElementById("weeklyGroup")?.value || "All";
+        const start=new Date(startValue+"T00:00:00");
+        const days=[];
+        for(let i=0;i<7;i++){
+            const d=new Date(start);
+            d.setDate(start.getDate()+i);
+            days.push(dateStr(d));
+        }
+
+        const ids=[];
+        labourers.forEach(w=>{
+            const wg=w.group || "Roshan Labours";
+            if(group!=="All" && wg!==group)return;
+            const has=attendance.some(r=>
+                r.workerId===w.id &&
+                days.includes(r.date) &&
+                (site==="All" || r.site===site)
+            );
+            if(has)ids.push(w.id);
+        });
+
+        document.getElementById("weeklyHead").innerHTML=
+            "<tr><th>Labourer</th>"+
+            days.map(d=>`<th>${d}</th>`).join("")+"<th>Total Days</th><th>Total OT</th></tr>";
+
+        document.getElementById("weeklyBody").innerHTML=ids.length ? ids.map(id=>{
+            const w=labourers.find(x=>x.id===id);
+            let total=0,ot=0;
+            const cells=days.map(d=>{
+                const rs=attendance.filter(r=>
+                    r.workerId===id && r.date===d &&
+                    (site==="All" || r.site===site)
+                );
+                total+=rs.reduce((t,r)=>t+(parseFloat(String(r.dutyCount).replace(/[^\d.]/g,""))||0),0);
+                ot+=rs.reduce((t,r)=>t+Number(r.ot||0),0);
+                return `<td>${rs.length ? rs.map(r=>`${bmjEscape(r.site)}<br><b>${bmjEscape(r.status)}</b><br><small>OT: ${Number(r.ot||0).toFixed(1)}</small>`).join("<hr>") : "-"}</td>`;
+            }).join("");
+            return `<tr><td><b>${bmjEscape(w.name)}</b><br><small>${bmjEscape(w.group||"Roshan Labours")}</small></td>${cells}<td><b>${total}</b></td><td><b>${ot.toFixed(1)}</b></td></tr>`;
+        }).join("") : '<tr><td colspan="10" class="empty">No attendance for this week.</td></tr>';
+    }
+
+    /* Keep Admin's original functions completely unchanged. */
+    window.loadDailyAttendance=function(){
+        if(fieldUser())return renderFieldDailyAttendance();
+        return originalLoadDailyAttendance();
+    };
+
+    window.saveAttendance=function(id){
+        if(fieldUser())return fieldSaveAttendance(id);
+        return originalSaveAttendance(id);
+    };
+
+    window.generateWeekly=function(){
+        if(fieldUser())return fieldGenerateWeekly();
+        return originalGenerateWeekly();
+    };
+
+    window.setupInterface=function(){
+        originalSetupInterface();
+        if(!fieldUser())return;
+
+        /* Keep the original V10 7-Day Sheet page/button. Only make it visible. */
+        const weeklyBtn=[...document.querySelectorAll(".nav")].find(n=>
+            (n.getAttribute("onclick")||"").includes("showPage('weekly'")
+        );
+        if(weeklyBtn)weeklyBtn.style.display="block";
+
+        const rules=document.querySelector("#daily .info");
+        if(rules)rules.style.display="none";
+
+        const table=document.querySelector("#dailyTable")?.closest("table");
+        if(table){
+            const heads=table.querySelectorAll("thead th");
+            /* Header is generated by the field renderer; hide the old columns. */
+            if(heads.length>=10){
+                [4,5,6,7].forEach(i=>heads[i] && (heads[i].style.display="none"));
+            }
+        }
+
+        refreshBMJSelects();
+        renderFieldDailyAttendance();
+    };
+
+    window.showPage=function(id,btn){
+        if(fieldUser() && id==="weekly"){
+            document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+            document.getElementById("weekly")?.classList.add("active");
+            document.querySelectorAll(".nav").forEach(n=>n.classList.remove("active"));
+            btn?.classList.add("active");
+            refreshBMJSelects();
+            fieldGenerateWeekly();
+            return;
+        }
+        return originalShowPage(id,btn);
+    };
+
+    /* Re-render the field table after the site selector changes. */
+    const siteSelect=document.getElementById("supervisorSite");
+    if(siteSelect){
+        siteSelect.addEventListener("change",()=>{
+            if(fieldUser())renderFieldDailyAttendance();
+        });
+    }
+})();
+</script>
+
+
+<script>
+/* =========================================================
+   BMJ V20 - FINAL TARGETED FIXES ONLY
+   1) Select + Save clears the saved attendance record.
+   2) 7-Day Sheet Site dropdown works for Admin + Engineers/Supervisors.
+   3) Keeps the existing 7-Day Sheet HTML/design/logo unchanged.
+========================================================= */
+(function(){
+    const previousSave = window.saveAttendance;
+    const previousWeekly = window.generateWeekly;
+
+    function activeAttendanceSite(){
+        if(!currentUser) return "";
+        if(currentUser.role === "Admin"){
+            return document.getElementById("attendanceSite")?.value || "";
+        }
+        return (currentUser.site || document.getElementById("supervisorSite")?.value || "").trim();
+    }
+
+    function refreshAfterClear(){
+        if(typeof loadDailyAttendance === "function") loadDailyAttendance();
+        if(typeof updateDashboard === "function") updateDashboard();
+        if(typeof updateSiteCounts === "function") updateSiteCounts();
+        if(typeof renderMasterTable === "function") renderMasterTable();
+        if(typeof updateReports === "function") updateReports();
+        if(typeof renderWorkedAttendance === "function") renderWorkedAttendance();
+    }
+
+    window.saveAttendance = function(id){
+        if(!currentUser){ return; }
+
+        const statusEl=document.getElementById("status-"+id);
+        const status=statusEl?.value || "";
+        const date=document.getElementById("attendanceDate")?.value || dateStr();
+        const site=activeAttendanceSite();
+
+        if(!site || site === "Select Site"){
+            alert("Select working site first.");
+            return;
+        }
+
+        /* SELECT + SAVE = remove the saved record for this worker/date/site. */
+        if(!status){
+            const rows=recordsForWorkerDateSite(id,date,site);
+            if(rows.length){
+                rows.forEach(r=>{
+                    const index=attendance.indexOf(r);
+                    if(index>=0) attendance.splice(index,1);
+                });
+                saveData();
+            }
+            if(typeof bmjDailyDraftStatus !== "undefined") delete bmjDailyDraftStatus[id];
+            if(typeof bmjFieldSaved !== "undefined") delete bmjFieldSaved[id+'|'+date+'|'+site];
+            refreshAfterClear();
+            return;
+        }
+
+        return previousSave(id);
+    };
+
+    function populateWeeklySiteDropdown(){
+        const el=document.getElementById("weeklySite");
+        if(!el) return;
+        const current=el.value || "All";
+        const siteList=Array.isArray(sites) ? sites : [];
+        el.disabled=false;
+        el.innerHTML='<option value="All">All</option>' + siteList.map(s=>
+            `<option value="${bmjEscape(s)}">${bmjEscape(s)}</option>`
+        ).join("");
+        if([...el.options].some(o=>o.value===current)) el.value=current;
+        else el.value="All";
+    }
+
+    function populateWeeklyGroupDropdown(){
+        const el=document.getElementById("weeklyGroup");
+        if(!el) return;
+        const current=el.value || "All";
+        const groups=Array.isArray(labourGroups) ? labourGroups : [];
+        el.innerHTML='<option value="All">All</option>' + groups.map(g=>{
+            const name=typeof g === "string" ? g : (g.name || "");
+            return name ? `<option value="${bmjEscape(name)}">${bmjEscape(name)}</option>` : "";
+        }).join("");
+        if([...el.options].some(o=>o.value===current)) el.value=current;
+        else el.value="All";
+    }
+
+    window.generateWeekly = function(){
+        const startValue=document.getElementById("weekStart")?.value;
+        if(!startValue) return;
+        const selectedSite=document.getElementById("weeklySite")?.value || "All";
+        const selectedGroup=document.getElementById("weeklyGroup")?.value || "All";
+        const start=new Date(startValue+"T00:00:00");
+        const days=[];
+        for(let i=0;i<7;i++){
+            const d=new Date(start);
+            d.setDate(start.getDate()+i);
+            days.push(dateStr(d));
+        }
+
+        const ids=[];
+        labourers.forEach(w=>{
+            const group=w.group || "Roshan Labours";
+            if(selectedGroup!=="All" && group!==selectedGroup) return;
+            const has=attendance.some(r=>
+                r.workerId===w.id &&
+                days.includes(r.date) &&
+                (selectedSite==="All" || r.site===selectedSite)
+            );
+            if(has) ids.push(w.id);
+        });
+
+        const head=document.getElementById("weeklyHead");
+        const body=document.getElementById("weeklyBody");
+        if(!head || !body) return;
+
+        head.innerHTML='<tr><th>Labourer</th>'+
+            days.map(d=>`<th>${d}</th>`).join("")+ '<th>Total Days</th><th>Total OT</th></tr>';
+
+        body.innerHTML=ids.length ? ids.map(id=>{
+            const w=labourers.find(x=>x.id===id);
+            if(!w) return "";
+            let totalDays=0,totalOT=0;
+            const cells=days.map(d=>{
+                const rows=attendance.filter(r=>
+                    r.workerId===id && r.date===d &&
+                    (selectedSite==="All" || r.site===selectedSite)
+                );
+                if(!rows.length) return '<td>-</td>';
+                rows.forEach(r=>{
+                    totalDays += parseFloat(String(r.dutyCount||"").replace(/[^0-9.]/g,"")) || dutyNumber(r.status);
+                    totalOT += Number(r.ot||0);
+                });
+                return `<td>${rows.map(r=>`${bmjEscape(r.site)}<br><b>${bmjEscape(r.status)}</b><br><small>OT: ${Number(r.ot||0).toFixed(1)}</small>`).join("<hr>")}</td>`;
+            }).join("");
+            return `<tr><td><b>${bmjEscape(w.name)}</b><br><small>${bmjEscape(w.group||"Roshan Labours")}</small></td>${cells}<td><b>${totalDays}</b></td><td><b>${totalOT.toFixed(1)}</b></td></tr>`;
+        }).join("") : '<tr><td colspan="10" class="empty">No attendance for this week.</td></tr>';
+    };
+
+    function dutyNumber(status){
+        return ({P:1,A:0,HD:.5,"P1/2":1.5,PP:2,PPP:3}[status] ?? 0);
+    }
+
+    function setupWeeklyV20(){
+        populateWeeklySiteDropdown();
+        populateWeeklyGroupDropdown();
+        const site=document.getElementById("weeklySite");
+        const group=document.getElementById("weeklyGroup");
+        const week=document.getElementById("weekStart");
+        if(site) site.onchange=window.generateWeekly;
+        if(group) group.onchange=window.generateWeekly;
+        if(week) week.onchange=window.generateWeekly;
+        window.generateWeekly();
+    }
+
+    const oldShowPage=window.showPage;
+    window.showPage=function(id,btn){
+        const result=oldShowPage(id,btn);
+        if(id==="weekly") setTimeout(setupWeeklyV20,0);
+        return result;
+    };
+
+    document.addEventListener("DOMContentLoaded",()=>setTimeout(setupWeeklyV20,100));
+    window.addEventListener("load",()=>setTimeout(setupWeeklyV20,100));
+})();
+</script>
+
+
+<script>
+/* V21: Admin-only PNG download for the existing 7-Day Sheet. */
+function updateWeeklyPngButton(){
+    const btn=document.getElementById("weeklyPngBtn");
+    if(!btn)return;
+    btn.style.display=(typeof currentUser!=="undefined" && currentUser && currentUser.role==="Admin") ? "inline-block" : "none";
+}
+
+async function downloadWeeklyPNG(){
+    if(typeof currentUser==="undefined" || !currentUser || currentUser.role!=="Admin"){
+        alert("Only Admin can download the 7-Day Sheet as PNG.");
+        return;
+    }
+    if(typeof html2canvas !== "function"){
+        alert("PNG download is not ready. Please check your internet connection and try again.");
+        return;
+    }
+
+    const sheet=document.getElementById("weekly");
+    if(!sheet){
+        alert("7-Day Sheet not found.");
+        return;
+    }
+
+    const btn=document.getElementById("weeklyPngBtn");
+    const oldText=btn ? btn.textContent : "";
+    if(btn){ btn.disabled=true; btn.textContent="Creating PNG..."; }
+
+    try{
+        const canvas=await html2canvas(sheet,{
+            scale:2,
+            useCORS:true,
+            backgroundColor:"#f3f4f6",
+            logging:false,
+            width:sheet.scrollWidth,
+            height:sheet.scrollHeight,
+            windowWidth:Math.max(document.documentElement.clientWidth,sheet.scrollWidth),
+            windowHeight:Math.max(window.innerHeight,sheet.scrollHeight)
+        });
+
+        const link=document.createElement("a");
+        const week=document.getElementById("weekStart")?.value || "week";
+        const site=document.getElementById("weeklySite")?.value || "All";
+        const safeSite=String(site).replace(/[^a-z0-9]+/gi,"_").replace(/^_|_$/g,"") || "All";
+        link.download=`BMJ_7-Day_Sheet_${week}_${safeSite}.png`;
+        link.href=canvas.toDataURL("image/png");
+        link.click();
+    }catch(err){
+        console.error("7-Day Sheet PNG error:",err);
+        alert("Could not create the PNG. Please try again.");
+    }finally{
+        if(btn){ btn.disabled=false; btn.textContent=oldText || "📷 Download PNG"; }
+    }
+}
+
+/* Keep the PNG control synced with the current login without changing the old sheet. */
+(function(){
+    const originalSetup=window.setupInterface;
+    if(typeof originalSetup==="function"){
+        window.setupInterface=function(){
+            const result=originalSetup.apply(this,arguments);
+            updateWeeklyPngButton();
+            return result;
+        };
+    }
+    const originalShow=window.showPage;
+    if(typeof originalShow==="function"){
+        window.showPage=function(){
+            const result=originalShow.apply(this,arguments);
+            updateWeeklyPngButton();
+            return result;
+        };
+    }
+    document.addEventListener("DOMContentLoaded",updateWeeklyPngButton);
+})();
+</script>
+
+<script>
+/* =========================================================
+   V22 - ONLY REQUESTED CHANGES
+   1) Engineer/Supervisor Daily Attendance header corrected.
+   2) Admin 7-Day Sheet gets a Labour Search box.
+   No other Admin layout/function is changed.
+========================================================= */
+(function(){
+    function isFieldUserV22(){
+        return !!window.currentUser && window.currentUser.role !== "Admin";
+    }
+
+    function fixFieldDailyHeaderV22(){
+        if(!isFieldUserV22()) return;
+        const table=document.getElementById("dailyTable");
+        const thead=table?.closest("table")?.querySelector("thead");
+        if(!thead) return;
+        thead.innerHTML = `
+          <tr>
+            <th>#</th>
+            <th>Labourer</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>OT Hours</th>
+            <th>Save</th>
+            <th>Labour Group</th>
+          </tr>`;
+    }
+
+    function updateWeeklySearchVisibilityV22(){
+        const wrap=document.getElementById("weeklySearchWrap");
+        if(wrap) wrap.style.display=isFieldUserV22() ? "none" : "block";
+    }
+
+    const previousGenerateWeeklyV22 = window.generateWeekly;
+    window.generateWeekly = function(){
+        if(typeof previousGenerateWeeklyV22 === "function"){
+            previousGenerateWeeklyV22.apply(this, arguments);
+        }
+
+        if(isFieldUserV22()){
+            updateWeeklySearchVisibilityV22();
+            return;
+        }
+
+        const input=document.getElementById("weeklySearch");
+        const query=(input?.value||"").trim().toLowerCase();
+        const body=document.getElementById("weeklyBody");
+        if(!body || !query) return;
+
+        [...body.querySelectorAll("tr")].forEach(row=>{
+            const firstCell=row.querySelector("td");
+            const text=(firstCell?.textContent||"").toLowerCase();
+            row.style.display=text.includes(query) ? "" : "none";
+        });
+    };
+
+    const previousLoadDailyV22 = window.loadDailyAttendance;
+    window.loadDailyAttendance = function(){
+        const result=typeof previousLoadDailyV22 === "function"
+            ? previousLoadDailyV22.apply(this, arguments)
+            : undefined;
+        setTimeout(fixFieldDailyHeaderV22,0);
+        return result;
+    };
+
+    const previousSetupV22 = window.setupInterface;
+    window.setupInterface = function(){
+        const result=typeof previousSetupV22 === "function"
+            ? previousSetupV22.apply(this, arguments)
+            : undefined;
+        setTimeout(function(){
+            fixFieldDailyHeaderV22();
+            updateWeeklySearchVisibilityV22();
+        },50);
+        return result;
+    };
+
+    document.addEventListener("DOMContentLoaded",function(){
+        setTimeout(function(){
+            fixFieldDailyHeaderV22();
+            updateWeeklySearchVisibilityV22();
+        },300);
     });
 })();
 </script>
