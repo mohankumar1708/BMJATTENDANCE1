@@ -207,7 +207,7 @@ header{
 
 .cards{
     display:grid;
-    grid-template-columns:repeat(4,1fr);
+    grid-template-columns:repeat(5,minmax(0,1fr));
     gap:15px;
     margin-bottom:20px;
 }
@@ -291,7 +291,7 @@ td input,td select{
 
 .siteGrid{
     display:grid;
-    grid-template-columns:repeat(4,1fr);
+    grid-template-columns:repeat(5,minmax(0,1fr));
     gap:15px;
 }
 
@@ -405,7 +405,8 @@ td input,td select{
 @media(max-width:1100px){
 
     .cards{
-        grid-template-columns:repeat(2,1fr);
+        grid-template-columns:repeat(5,minmax(180px,1fr));
+        overflow-x:auto;
     }
 
     .filters{
@@ -413,7 +414,8 @@ td input,td select{
     }
 
     .siteGrid{
-        grid-template-columns:repeat(2,1fr);
+        grid-template-columns:repeat(5,minmax(180px,1fr));
+        overflow-x:auto;
     }
 }
 
@@ -447,11 +449,13 @@ td input,td select{
     }
 
     .siteGrid{
-        grid-template-columns:1fr;
+        grid-template-columns:repeat(5,minmax(180px,1fr));
+        overflow-x:auto;
     }
 
     .cards{
-        grid-template-columns:1fr 1fr;
+        grid-template-columns:repeat(5,minmax(180px,1fr));
+        overflow-x:auto;
     }
 
     .badge{
@@ -689,6 +693,11 @@ td input,td select{
             0
         </div>
 
+    </div>
+
+    <div class="card">
+        <div class="label">Available Labourers</div>
+        <div id="availableLabourers" class="value">0</div>
     </div>
 
 
@@ -5987,6 +5996,8 @@ function updateDashboard(){
     if(bmjRole()!=="Admin")return;
     const today=dateStr();
     document.getElementById("totalLabourers").textContent=labourers.length;
+    const availableEl=document.getElementById("availableLabourers");
+    if(availableEl) availableEl.textContent=labourers.filter(w=>!(w && (w.hidden===true || w.active===false))).length;
     const todayRows=attendance.filter(r=>r.date===today);
     document.getElementById("presentToday").textContent=todayRows.filter(r=>["P","P1/2","PP","PPP"].includes(r.status)).length;
     document.getElementById("absentToday").textContent=todayRows.filter(r=>r.status==="A").length;
@@ -6532,6 +6543,8 @@ function updateDashboard(){
     const workerIds=Object.keys(byWorker);
 
     document.getElementById("totalLabourers").textContent=labourers.length;
+    const availableEl=document.getElementById("availableLabourers");
+    if(availableEl) availableEl.textContent=labourers.filter(w=>!(w && (w.hidden===true || w.active===false))).length;
     document.getElementById("presentToday").textContent=workerIds.filter(id=>byWorker[id].some(r=>presentCodes.includes(r.status))).length;
     document.getElementById("absentToday").textContent=workerIds.filter(id=>{
         const rows=byWorker[id];
@@ -6633,6 +6646,8 @@ function updateDashboard(){
     if(!currentUser || bmjRole()!=="Admin") return;
     const today=dateStr();
     document.getElementById("totalLabourers").textContent=labourers.length;
+    const availableEl=document.getElementById("availableLabourers");
+    if(availableEl) availableEl.textContent=labourers.filter(w=>!(w && (w.hidden===true || w.active===false))).length;
 
     /*
        A labourer is Present/Working if ANY site has P, HD, P1/2, PP or PPP.
@@ -6892,6 +6907,8 @@ function updateDashboard(){
     if(!currentUser || bmjRole()!=="Admin")return;
     const today=dateStr();
     document.getElementById("totalLabourers").textContent=labourers.length;
+    const availableEl=document.getElementById("availableLabourers");
+    if(availableEl) availableEl.textContent=labourers.filter(w=>!(w && (w.hidden===true || w.active===false))).length;
     let present=0,absent=0,ot=0;
     labourers.forEach(w=>{
         const rows=bmjWorkerTodayRecords(w.id,today);
@@ -6930,6 +6947,8 @@ function updateDashboard(){
     const presentCodes=["P","HD","P1/2","PP","PPP"];
 
     document.getElementById("totalLabourers").textContent=labourers.length;
+    const availableEl=document.getElementById("availableLabourers");
+    if(availableEl) availableEl.textContent=labourers.filter(w=>!(w && (w.hidden===true || w.active===false))).length;
 
     let present=0, absent=0, ot=0;
     labourers.forEach(w=>{
@@ -7466,7 +7485,10 @@ function updateSiteCounts(){
             return;
         }
 
+        // Hide only the worker's name from field attendance lists. Do not modify
+        // labourers or attendance arrays; historical attendance/OT remains intact.
         const list=labourers.filter(w=>{
+            if(w && (w.hidden===true || w.active===false)) return false;
             const g=w.group || "Roshan Labours";
             if(role!=="All" && w.role!==role)return false;
             if(group!=="All" && g!==group)return false;
@@ -8004,5 +8026,551 @@ async function downloadWeeklyPNG(){
     });
 })();
 </script>
+
+<script>
+/* =========================================================
+ BMJ ATTENDANCE V25 PATCH
+ - Admin controls past/future attendance dates; today is auto-enabled
+ - Admin Hide/Show labourers without deleting history
+ - Transaction-based attendance saves to avoid concurrent array overwrite
+ - Saved appears only after Firebase confirms the write
+ - Field panels update from shared Firestore snapshots
+ ========================================================= */
+(function(){
+  const _bmjV25OriginalSetup = window.setupInterface;
+  const _bmjV25OriginalLoadDaily = window.loadDailyAttendance;
+  const _bmjV25OriginalRenderLabourers = window.renderLabourers;
+  const _bmjV25OriginalSaveData = window.saveData;
+  const dateControlDoc = db.collection('bmjAttendance').doc('dateControls');
+  let enabledAttendanceDates = [];
+  let dateControlsReady = false;
+  let dateControlsListenerStarted = false;
+  let dateControlsBusy = false;
+
+  function v25Today(){ return typeof dateStr==='function' ? dateStr() : new Date().toISOString().slice(0,10); }
+  function v25IsAdmin(){ return !!currentUser && currentUser.role==='Admin'; }
+  function v25DateAllowed(date){ return !!date && (date===v25Today() || enabledAttendanceDates.includes(date)); }
+  function v25IsHidden(w){ return w && (w.hidden===true || w.active===false); }
+  function v25Esc(v){ return typeof bmjEscape==='function' ? bmjEscape(v) : String(v??''); }
+
+  // Keep the existing saveData behaviour for labourers/sites/groups, but never
+  // rewrite the whole attendance array from a stale browser copy.
+  window.saveData = function(){
+    localStorage.setItem(LABOUR_KEY, JSON.stringify(labourers));
+    localStorage.setItem('BMJ_SITES', JSON.stringify(sites));
+    localStorage.setItem('BMJ_LABOUR_GROUPS', JSON.stringify(labourGroups));
+    if(!cloudReady) return;
+    const jobs = [
+      labourDoc.set({items:labourers,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}),
+      bmjSitesDoc.set({items:sites,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}),
+      bmjGroupsDoc.set({items:labourGroups,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true})
+    ];
+    Promise.all(jobs).catch(e=>{ console.error('BMJ V25 save error:',e); alert('Could not sync changes to Firebase. Please check internet and retry.'); });
+  };
+
+  function ensureAdminDatePage(){
+    const sidebar=document.querySelector('.sidebar');
+    if(sidebar && !document.getElementById('bmjV25DateNav')){
+      const b=document.createElement('button');
+      b.id='bmjV25DateNav'; b.className='nav adminNav';
+      b.textContent='🗓️ Attendance Date Control';
+      b.addEventListener('click',function(){ showPage('bmjV25Dates',b); renderDateControls(); });
+      const accountsNav=sidebar.querySelector('[onclick*="showPage(\'accounts\'"]');
+      if(accountsNav) accountsNav.insertAdjacentElement('afterend',b); else sidebar.appendChild(b);
+    }
+    const main=document.querySelector('.main');
+    if(main && !document.getElementById('bmjV25Dates')){
+      const sec=document.createElement('section');
+      sec.id='bmjV25Dates'; sec.className='page';
+      sec.innerHTML=`<div class="title"><h1>🗓️ Attendance Date Control</h1><p>Today is automatically enabled. Other dates are blocked until Admin enables them.</p></div>
+      <div class="panel"><div class="filters"><div><label for="bmjV25DatePicker">Choose attendance date</label><input id="bmjV25DatePicker" type="date" value="${v25Today()}" max="9999-12-31" onchange="renderDateControls()"></div></div>
+      <div id="bmjV25DateStatus" style="margin:12px 0;font-weight:700"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap"><button id="bmjV25EnableBtn" class="green" onclick="setBMJAttendanceDate(true)">Enable Date</button><button id="bmjV25DisableBtn" class="red" onclick="setBMJAttendanceDate(false)">Disable Date</button></div>
+      <p style="margin-top:14px;color:var(--muted,#666)">Disabling a date blocks engineers and supervisors from adding or editing attendance. Existing records are preserved.</p>
+      <h3>Recently enabled dates</h3><div id="bmjV25EnabledList">Loading…</div></div>`;
+      main.appendChild(sec);
+    }
+  }
+
+  async function loadDateControls(){
+    try{
+      const snap=await dateControlDoc.get();
+      enabledAttendanceDates=snap.exists && Array.isArray(snap.data().enabledDates) ? snap.data().enabledDates : [];
+      dateControlsReady=true;
+      if(!snap.exists && cloudReady){ await dateControlDoc.set({enabledDates:[],updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true}); }
+      if(!dateControlsListenerStarted){
+        dateControlsListenerStarted=true;
+        dateControlDoc.onSnapshot(s=>{
+          if(!s.exists)return;
+          const next=s.data().enabledDates;
+          if(Array.isArray(next)) enabledAttendanceDates=next;
+          dateControlsReady=true;
+          if(currentUser){ applyDateLock(); renderDateControls(); }
+        },e=>console.error('Date controls listener error:',e));
+      }
+      applyDateLock(); renderDateControls();
+    }catch(e){
+      console.error('Could not load date controls:',e);
+      dateControlsReady=false;
+      alert('Could not load attendance date permissions. Please check internet before taking attendance.');
+    }
+  }
+
+  window.renderDateControls=function(){
+    const picker=document.getElementById('bmjV25DatePicker');
+    const status=document.getElementById('bmjV25DateStatus');
+    if(!picker||!status)return;
+    const date=picker.value||v25Today();
+    const isToday=date===v25Today();
+    const allowed=v25DateAllowed(date);
+    status.textContent=`${date} — ${isToday?'Enabled automatically (today)':allowed?'Enabled':'Disabled'}`;
+    status.style.color=allowed?'#16803c':'#b42318';
+    const en=document.getElementById('bmjV25EnableBtn'), dis=document.getElementById('bmjV25DisableBtn');
+    if(en)en.disabled=isToday||allowed||!dateControlsReady;
+    if(dis)dis.disabled=isToday||!allowed||!dateControlsReady;
+    const list=document.getElementById('bmjV25EnabledList');
+    if(list){
+      const sorted=[...enabledAttendanceDates].sort((a,b)=>b.localeCompare(a));
+      list.innerHTML=sorted.length?sorted.map(d=>`<div style="padding:7px 0;border-bottom:1px solid #ddd">${v25Esc(d)} <span style="color:#16803c;font-weight:700">Enabled</span></div>`).join(''):'<p>No past/future dates are manually enabled. Only today is open.</p>';
+    }
+  };
+
+  window.setBMJAttendanceDate=async function(enable){
+    if(!v25IsAdmin())return alert('Only Admin can change attendance date permissions.');
+    const picker=document.getElementById('bmjV25DatePicker');
+    const date=picker?.value;
+    if(!date)return alert('Choose a date first.');
+    if(date===v25Today())return alert('Today is automatically enabled and cannot be disabled here.');
+    if(!cloudReady||!dateControlsReady)return alert('Firebase/date settings are not ready. Please wait and retry.');
+    if(dateControlsBusy)return;
+    dateControlsBusy=true;
+    try{
+      await db.runTransaction(async tx=>{
+        const snap=await tx.get(dateControlDoc);
+        const current=snap.exists&&Array.isArray(snap.data().enabledDates)?snap.data().enabledDates:[];
+        const next=enable ? [...new Set([...current,date])] : current.filter(d=>d!==date);
+        tx.set(dateControlDoc,{enabledDates:next,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+        enabledAttendanceDates=next;
+      });
+      renderDateControls(); applyDateLock();
+    }catch(e){console.error(e);alert('Date permission was not saved. Please retry.');}
+    finally{dateControlsBusy=false;}
+  };
+
+  function applyDateLock(){
+    const input=document.getElementById('attendanceDate');
+    if(!input)return;
+    const date=input.value||v25Today();
+    const allowed=v25IsAdmin() || (dateControlsReady && v25DateAllowed(date));
+    const page=document.getElementById('daily');
+    if(page){
+      page.querySelectorAll('#dailyTable select[id^="status-"],#dailyTable input[id^="ot-"],#dailyTable input[id^="in-"],#dailyTable input[id^="out-"]').forEach(el=>el.disabled=!allowed);
+      page.querySelectorAll('#dailyTable button').forEach(btn=>{ if(!btn.dataset.v25Saving)btn.disabled=!allowed; });
+      let notice=document.getElementById('bmjV25DateLockNotice');
+      if(!notice){notice=document.createElement('div');notice.id='bmjV25DateLockNotice';notice.style.cssText='padding:10px;margin:10px 0;border-radius:8px;font-weight:600';input.closest('.panel')?.prepend(notice);}
+      if(notice){notice.style.display=allowed?'none':'block';notice.style.background='#fff0f0';notice.style.color='#a61b1b';notice.textContent=dateControlsReady?`Attendance for ${date} is disabled by Admin. You can view existing records but cannot add or edit attendance.`:'Loading attendance permissions…';}
+    }
+  }
+
+  // Field users only see active/visible labourers. Admin continues to see all.
+  window.loadDailyAttendance=function(){
+    const all=labourers;
+    if(currentUser && currentUser.role!=='Admin') labourers=all.filter(w=>!v25IsHidden(w));
+    try{ if(typeof _bmjV25OriginalLoadDaily==='function') return _bmjV25OriginalLoadDaily.apply(this,arguments); }
+    finally{ labourers=all; }
+  };
+  window.renderLabourers=function(){
+    const all=labourers;
+    if(currentUser && currentUser.role!=='Admin') labourers=all.filter(w=>!v25IsHidden(w));
+    try{ if(typeof _bmjV25OriginalRenderLabourers==='function') _bmjV25OriginalRenderLabourers.apply(this,arguments); }
+    finally{ labourers=all; }
+    if(v25IsAdmin()){
+      const table=document.getElementById('labourerTable');
+      table?.querySelectorAll('tr').forEach(row=>{
+        const id=row.cells?.[1]?.textContent?.trim();
+        const worker=labourers.find(w=>String(w.id)===String(id));
+        if(!worker)return;
+        const cell=row.cells[row.cells.length-1]; if(!cell||cell.querySelector('[data-v25-hide]'))return;
+        const b=document.createElement('button');b.dataset.v25Hide='1';b.className=v25IsHidden(worker)?'green':'gray';
+        b.textContent=v25IsHidden(worker)?'Show Labourer':'Hide Labourer';
+        b.onclick=()=>toggleBMJLabourerHidden(worker.id);cell.appendChild(b);
+        if(v25IsHidden(worker)){row.style.opacity='.72'; const nameCell=row.cells[2];if(nameCell&&!nameCell.querySelector('.v25HiddenLabel')){const tag=document.createElement('small');tag.className='v25HiddenLabel';tag.style.cssText='display:block;color:#b42318;font-weight:700';tag.textContent='HIDDEN';nameCell.appendChild(tag);}}
+      });
+    }
+  };
+
+  window.toggleBMJLabourerHidden=async function(id){
+    if(!v25IsAdmin())return alert('Only Admin can hide or show labourers.');
+    const w=labourers.find(x=>String(x.id)===String(id));if(!w)return;
+    const next=!v25IsHidden(w);
+    w.hidden=next;
+    try{
+      if(!cloudReady)throw new Error('Firebase is not ready');
+      await labourDoc.set({items:labourers,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      localStorage.setItem(LABOUR_KEY,JSON.stringify(labourers));
+      updateAll();
+      const totalEl=document.getElementById('totalLabourers');
+      const availableEl=document.getElementById('availableLabourers');
+      if(totalEl) totalEl.textContent=labourers.length;
+      if(availableEl) availableEl.textContent=labourers.filter(worker=>!(worker && (worker.hidden===true || worker.active===false))).length;
+    }catch(e){w.hidden=!next;console.error(e);alert('Hide/Show was not saved to Firebase. Please retry.');}
+  };
+
+  // Deleting a labourer from the current register must never erase historical attendance.
+  window.deleteLabourer=async function(id){
+    if(!v25IsAdmin())return;
+    if(!confirm('Remove this labourer from the active labour list? All previous attendance records will be preserved.'))return;
+    const old=labourers;
+    labourers=labourers.filter(w=>String(w.id)!==String(id));
+    try{
+      if(!cloudReady)throw new Error('Firebase is not ready');
+      await labourDoc.set({items:labourers,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      localStorage.setItem(LABOUR_KEY,JSON.stringify(labourers));
+      updateAll();
+    }catch(e){labourers=old;console.error(e);alert('Labourer was not removed. Firebase save failed. No attendance records were deleted.');updateAll();}
+  };
+
+  // Transactionally merge each worker/date/site record into the latest cloud array.
+  // This prevents concurrent field users from overwriting each other's whole-array writes.
+  window.saveAttendance=async function(id){
+    if(!currentUser)return;
+    const date=document.getElementById('attendanceDate')?.value||v25Today();
+    const site=currentUser.role==='Admin' ? document.getElementById('attendanceSite')?.value : (currentUser.site||document.getElementById('supervisorSite')?.value);
+    if(!site||site==='Select Site')return alert('Select working site first.');
+    if(currentUser.role!=='Admin' && (!dateControlsReady||!v25DateAllowed(date)))return alert('Attendance for this date is disabled by Admin.');
+    const status=document.getElementById('status-'+id)?.value;
+    if(!status)return alert('Select attendance status before saving.');
+    if(!cloudReady)return alert('Firebase is not connected yet. Please wait for the connection and retry.');
+    const worker=labourers.find(w=>String(w.id)===String(id));
+    if(!worker)return alert('Labourer not found. Refresh the page and retry.');
+    const now=new Date();
+    const record={workerId:id,date,site,inCharge:currentUser.role==='Admin'?'Admin':(currentUser.name||currentUser.role),takenBy:currentUser.role==='Admin'?'Admin':currentUser.role,takenByUsername:currentUser.username,takenAt:now.toISOString(),status,inTime:document.getElementById('in-'+id)?.value||'',outTime:document.getElementById('out-'+id)?.value||'',dutyCount:duty(status),ot:Number(document.getElementById('ot-'+id)?.value||0),updatedBy:currentUser.username,updatedAt:Date.now()};
+    const btn=document.getElementById('status-'+id)?.closest('tr')?.querySelector('button');
+    if(btn){btn.dataset.v25Saving='1';btn.disabled=true;btn.textContent='Saving…';}
+    try{
+      let merged=[];
+      await db.runTransaction(async tx=>{
+        const snap=await tx.get(attendanceDoc);
+        const cloudItems=snap.exists&&Array.isArray(snap.data().items)?snap.data().items:[];
+        merged=cloudItems.slice();
+        const idx=merged.findIndex(r=>String(r.workerId)===String(id)&&r.date===date&&r.site===site);
+        if(idx>=0) merged[idx]={...merged[idx],...record}; else merged.push(record);
+        tx.set(attendanceDoc,{items:merged,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      });
+      attendance=merged;
+      localStorage.setItem(ATT_KEY,JSON.stringify(attendance));
+      delete bmjDailyDraftStatus[id];
+      updateAll();
+      if(typeof renderDateControls==='function')renderDateControls();
+      const freshBtn=document.getElementById('status-'+id)?.closest('tr')?.querySelector('button');
+      if(freshBtn){freshBtn.textContent='Saved';freshBtn.className='blue';freshBtn.disabled=false;}
+      const workerNow=labourers.find(w=>String(w.id)===String(id));
+      const notice=document.getElementById('sameDayAttendanceNotice');
+      if(notice&&workerNow&&currentUser.role!=='Admin'){
+        const total=typeof sameDayTotalForWorker==='function'?sameDayTotalForWorker(id,date):'';
+        notice.textContent=`${workerNow.name}: ${site} saved successfully. Total for this date = ${total} Day(s).`;
+        notice.style.display='block';
+      }
+    }catch(e){
+      console.error('BMJ attendance save failed:',e);
+      if(btn){btn.textContent='Save Failed — Retry';btn.className='red';btn.disabled=false;}
+      alert('Attendance was NOT confirmed saved. Please check internet and click Save Failed — Retry. Error: '+(e.message||e));
+    }finally{ if(btn)delete btn.dataset.v25Saving; }
+  };
+
+  // Decorate the rendered rows with truthful save state and date locks.
+  function decorateDaily(){
+    const date=document.getElementById('attendanceDate')?.value||v25Today();
+    const site=v25IsAdmin()?document.getElementById('attendanceSite')?.value:currentUser?.site;
+    document.querySelectorAll('#dailyTable tr').forEach(row=>{
+      const sel=row.querySelector('select[id^="status-"]');if(!sel)return;
+      const id=sel.id.slice('status-'.length);
+      const rec=attendance.find(r=>String(r.workerId)===String(id)&&r.date===date&&r.site===site);
+      const btn=row.querySelector('button');
+      if(btn && !btn.dataset.v25Saving){btn.textContent=rec?'Saved':'Save';btn.className=rec?'blue':'green';}
+    });
+    applyDateLock();
+  }
+  const _v25LoadWrap=window.loadDailyAttendance;
+  window.loadDailyAttendance=function(){
+    const r=_v25LoadWrap.apply(this,arguments);
+    setTimeout(decorateDaily,0);
+    return r;
+  };
+
+  const _v25StatusChanged=window.statusChanged;
+  window.statusChanged=function(id){
+    if(typeof _v25StatusChanged==='function')_v25StatusChanged.apply(this,arguments);
+    const b=document.getElementById('status-'+id)?.closest('tr')?.querySelector('button');
+    if(b){b.textContent='Save';b.className='green';}
+  };
+
+  window.setupInterface=function(){
+    ensureAdminDatePage();
+    if(typeof _bmjV25OriginalSetup==='function')_bmjV25OriginalSetup.apply(this,arguments);
+    const nav=document.getElementById('bmjV25DateNav');if(nav)nav.style.display=v25IsAdmin()?'block':'none';
+    const page=document.getElementById('bmjV25Dates');if(page)page.style.display='';
+    if(dateControlsReady){applyDateLock();renderDateControls();}
+    else loadDateControls();
+    setTimeout(decorateDaily,0);
+  };
+
+  // Re-apply restrictions after date/site changes and on every account setup.
+  document.addEventListener('change',e=>{
+    if(e.target?.id==='attendanceDate'||e.target?.id==='attendanceSite'||e.target?.id==='supervisorSite')setTimeout(()=>{applyDateLock();decorateDaily();},0);
+  });
+  document.addEventListener('DOMContentLoaded',()=>{
+    ensureAdminDatePage();
+    if(cloudReady)loadDateControls();
+    const dateInput=document.getElementById('attendanceDate');
+    if(dateInput&&!dateInput.value)dateInput.value=v25Today();
+  });
+})();
+</script>
+
+
+<script>
+/* BMJ V26 reliability corrections: cloud/local recovery + date-control buttons */
+(function(){
+  const v26LabourRef = db.collection('bmjAttendance').doc('labourers');
+  const v26AttendanceRef = db.collection('bmjAttendance').doc('attendance');
+  const v26SitesRef = db.collection('bmjAttendance').doc('sites');
+  const v26GroupsRef = db.collection('bmjAttendance').doc('labourGroups');
+  const v26AccountsRef = db.collection('bmjAttendance').doc('accounts');
+  let v26ListenersStarted = false;
+  let v26Loading = false;
+  const v26Json = v => JSON.stringify(v ?? null);
+
+  function v26MergeLabourers(cloud, local){
+    const map = new Map();
+    // Cloud values are authoritative for matching IDs; local-only members are recovered.
+    (Array.isArray(local)?local:[]).forEach(w=>{ if(w && w.id!=null) map.set(String(w.id),w); });
+    (Array.isArray(cloud)?cloud:[]).forEach(w=>{ if(w && w.id!=null) map.set(String(w.id),w); });
+    return [...map.values()];
+  }
+  function v26AttendanceKey(r){ return [String(r?.workerId??''),String(r?.date??''),String(r?.site??'')].join('::'); }
+  function v26MergeAttendance(cloud, local){
+    const map = new Map();
+    (Array.isArray(local)?local:[]).forEach(r=>{ if(r) map.set(v26AttendanceKey(r),r); });
+    (Array.isArray(cloud)?cloud:[]).forEach(r=>{ if(r) map.set(v26AttendanceKey(r),r); });
+    return [...map.values()];
+  }
+  async function v26PersistMerged(ref, field, items){
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      const existing=snap.exists&&Array.isArray(snap.data()[field])?snap.data()[field]:[];
+      const merged=field==='items' && ref===v26LabourRef
+        ? v26MergeLabourers(existing,items)
+        : v26MergeAttendance(existing,items);
+      if(v26Json(merged)!==v26Json(existing)) tx.set(ref,{[field]:merged,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+    });
+  }
+
+  // Replace the older loader which ignored local-only members when Firestore already had data.
+  window.loadFirebaseData = async function(){
+    if(v26Loading) return;
+    v26Loading=true;
+    try{
+      const [ls,as,ss,gs,acs]=await Promise.all([
+        v26LabourRef.get(),v26AttendanceRef.get(),v26SitesRef.get(),v26GroupsRef.get(),v26AccountsRef.get()
+      ]);
+      const localL=JSON.parse(localStorage.getItem(LABOUR_KEY)||'[]');
+      const localA=JSON.parse(localStorage.getItem(ATT_KEY)||'[]');
+      const cloudL=ls.exists&&Array.isArray(ls.data().items)?ls.data().items:[];
+      const cloudA=as.exists&&Array.isArray(as.data().items)?as.data().items:[];
+      labourers=v26MergeLabourers(cloudL,localL);
+      attendance=v26MergeAttendance(cloudA,localA);
+      if(ss.exists&&Array.isArray(ss.data().items)) sites=ss.data().items;
+      if(gs.exists&&Array.isArray(gs.data().items)) labourGroups=gs.data().items;
+      if(acs.exists&&Array.isArray(acs.data().items)) bmjAccounts=normalizeBMJAccounts(acs.data().items);
+      cloudReady=true;
+      localStorage.setItem(LABOUR_KEY,JSON.stringify(labourers));
+      localStorage.setItem(ATT_KEY,JSON.stringify(attendance));
+      localStorage.setItem('BMJ_SITES',JSON.stringify(sites));
+      localStorage.setItem('BMJ_LABOUR_GROUPS',JSON.stringify(labourGroups));
+      localStorage.setItem('BMJ_ACCOUNTS',JSON.stringify(bmjAccounts));
+
+      // Merge any local-only additions/records into Firestore without replacing cloud-only data.
+      await Promise.all([
+        v26PersistMerged(v26LabourRef,'items',labourers),
+        v26PersistMerged(v26AttendanceRef,'items',attendance)
+      ]);
+      if(!ss.exists) await v26SitesRef.set({items:sites,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      if(!gs.exists) await v26GroupsRef.set({items:labourGroups,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+      if(!acs.exists && typeof saveBMJAccounts==='function') await saveBMJAccounts();
+
+      if(!v26ListenersStarted){
+        v26ListenersStarted=true;
+        v26LabourRef.onSnapshot(s=>{
+          if(!s.exists||!Array.isArray(s.data().items))return;
+          labourers=s.data().items;
+          localStorage.setItem(LABOUR_KEY,JSON.stringify(labourers));
+          if(currentUser)updateAll();
+        },e=>console.error('Labourer sync listener failed:',e));
+        v26AttendanceRef.onSnapshot(s=>{
+          if(!s.exists||!Array.isArray(s.data().items))return;
+          attendance=s.data().items;
+          localStorage.setItem(ATT_KEY,JSON.stringify(attendance));
+          if(currentUser)updateAll();
+        },e=>console.error('Attendance sync listener failed:',e));
+        v26SitesRef.onSnapshot(s=>{if(s.exists&&Array.isArray(s.data().items)){sites=s.data().items;localStorage.setItem('BMJ_SITES',JSON.stringify(sites));if(typeof refreshBMJSelects==='function')refreshBMJSelects();if(currentUser)updateAll();}},e=>console.error(e));
+        v26GroupsRef.onSnapshot(s=>{if(s.exists&&Array.isArray(s.data().items)){labourGroups=s.data().items;localStorage.setItem('BMJ_LABOUR_GROUPS',JSON.stringify(labourGroups));if(typeof refreshBMJSelects==='function')refreshBMJSelects();if(currentUser)updateAll();}},e=>console.error(e));
+        v26AccountsRef.onSnapshot(s=>{if(s.exists&&Array.isArray(s.data().items)){bmjAccounts=normalizeBMJAccounts(s.data().items);localStorage.setItem('BMJ_ACCOUNTS',JSON.stringify(bmjAccounts));if(currentUser&&typeof renderAccounts==='function')renderAccounts();}},e=>console.error(e));
+      }
+      if(typeof refreshBMJSelects==='function')refreshBMJSelects();
+      if(currentUser&&typeof updateAll==='function')updateAll();
+      if(typeof setupInterface==='function'&&currentUser)setupInterface();
+    }catch(e){
+      console.error('V26 Firebase recovery load failed:',e);
+      cloudReady=true;
+      alert('Firebase sync could not finish. Your local data was kept. Check internet and Firestore permissions, then refresh.');
+    }finally{v26Loading=false;}
+  };
+
+  // Ensure new labourers are merged transactionally, so an older phone's list cannot overwrite newer members.
+  window.addLabourer = async function(){
+    if(!currentUser || currentUser.role!=='Admin') return alert('Only Admin can add labourers.');
+    const id=document.getElementById('workerId')?.value.trim();
+    const name=document.getElementById('workerName')?.value.trim();
+    if(!id||!name)return alert('Enter Labour ID and Name.');
+    if(labourers.some(w=>String(w.id)===String(id)))return alert('Labour ID already exists.');
+    const worker={id,name,role:document.getElementById('workerRole')?.value||'General Labour',group:document.getElementById('workerGroup')?.value||'Roshan Labours',phone:document.getElementById('workerPhone')?.value.trim()||'',dutyStart:document.getElementById('workerStart')?.value||'06:00',dutyEnd:document.getElementById('workerEnd')?.value||'14:00'};
+    labourers=[...labourers,worker];
+    localStorage.setItem(LABOUR_KEY,JSON.stringify(labourers));
+    try{
+      if(!cloudReady)throw new Error('Firebase is not ready');
+      await db.runTransaction(async tx=>{
+        const snap=await tx.get(v26LabourRef);
+        const cloud=snap.exists&&Array.isArray(snap.data().items)?snap.data().items:[];
+        const merged=v26MergeLabourers(cloud,labourers);
+        tx.set(v26LabourRef,{items:merged,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
+        labourers=merged;
+      });
+      localStorage.setItem(LABOUR_KEY,JSON.stringify(labourers));
+      ['workerId','workerName','workerPhone'].forEach(x=>{const el=document.getElementById(x);if(el)el.value='';});
+      updateAll();
+    }catch(e){
+      console.error('Add labourer sync failed:',e);
+      alert('Labourer was added on this device but Firebase did not confirm the save. Do not refresh yet; check internet and retry.');
+    }
+  };
+
+  // Bind date controls directly as a fallback to inline handlers, and show real save errors.
+  function v26BindDateButtons(){
+    const en=document.getElementById('bmjV25EnableBtn');
+    const dis=document.getElementById('bmjV25DisableBtn');
+    if(en&&!en.dataset.v26Bound){en.dataset.v26Bound='1';en.removeAttribute('onclick');en.onclick=()=>window.setBMJAttendanceDate(true);}
+    if(dis&&!dis.dataset.v26Bound){dis.dataset.v26Bound='1';dis.removeAttribute('onclick');dis.onclick=()=>window.setBMJAttendanceDate(false);}
+    const picker=document.getElementById('bmjV25DatePicker');
+    if(picker&&!picker.dataset.v26Bound){picker.dataset.v26Bound='1';picker.removeAttribute('onchange');picker.onchange=()=>window.renderDateControls();}
+  }
+  const oldEnsure=window.setupInterface;
+  window.setupInterface=function(){
+    const out=typeof oldEnsure==='function'?oldEnsure.apply(this,arguments):undefined;
+    setTimeout(v26BindDateButtons,0);
+    return out;
+  };
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(v26BindDateButtons,0));
+  const oldRender=window.renderDateControls;
+  window.renderDateControls=function(){
+    if(typeof oldRender==='function')oldRender.apply(this,arguments);
+    v26BindDateButtons();
+  };
+})();
+</script>
+
+
+<script>
+/* BMJ V29 hidden-labourer display safeguard.
+   Hidden workers remain in Firebase and historical attendance; this only filters normal attendance-taking/master lists. */
+(function(){
+  function isHiddenForDisplay(w){
+    return !!(w && (w.hidden === true || w.active === false));
+  }
+  const previousMaster = window.renderMasterTable;
+  if(typeof previousMaster === "function"){
+    window.renderMasterTable = function(){
+      if(!currentUser || (typeof bmjRole === "function" ? bmjRole() : currentUser.role) !== "Admin"){
+        return;
+      }
+      const original = labourers;
+      try {
+        labourers = original.filter(w => !isHiddenForDisplay(w));
+        return previousMaster.apply(this, arguments);
+      } finally {
+        labourers = original;
+      }
+    };
+  }
+
+  const previousDaily = window.loadDailyAttendance;
+  if(typeof previousDaily === "function"){
+    window.loadDailyAttendance = function(){
+      if(!currentUser || currentUser.role === "Admin"){
+        return previousDaily.apply(this, arguments);
+      }
+      const original = labourers;
+      try {
+        labourers = original.filter(w => !isHiddenForDisplay(w));
+        return previousDaily.apply(this, arguments);
+      } finally {
+        labourers = original;
+      }
+    };
+  }
+})();
+</script>
+
+<script>
+/* BMJ V32: Admin-only Hide/Show with live field-login sync.
+   This changes only labourer visibility flags; it never deletes attendance. */
+(function(){
+  function hidden(w){ return !!(w && (w.hidden === true || w.active === false)); }
+  // Re-render field attendance using the latest shared labourer list.
+  let lastFingerprint = '';
+  function syncLabourerVisibilityFromCloud(snapshot){
+    if(!snapshot || !snapshot.exists) return;
+    const data=snapshot.data() || {};
+    if(!Array.isArray(data.items)) return;
+    const next=data.items;
+    const fingerprint=JSON.stringify(next.map(w=>[String(w.id),hidden(w)]));
+    if(fingerprint===lastFingerprint) return;
+    lastFingerprint=fingerprint;
+    // Preserve the full list (including hidden people) in memory and storage.
+    labourers=next;
+    try { localStorage.setItem(LABOUR_KEY, JSON.stringify(labourers)); } catch(e) {}
+    if(currentUser){
+      // The field attendance renderer filters hidden names; Admin keeps the full register.
+      if(typeof renderLabourers==='function') renderLabourers();
+      if(typeof loadDailyAttendance==='function') loadDailyAttendance();
+      if(currentUser.role==='Admin' && typeof updateDashboard==='function') updateDashboard();
+    }
+  }
+  function startVisibilityListener(){
+    if(!cloudReady || !labourDoc || window.__bmjV32VisibilityListener) return;
+    window.__bmjV32VisibilityListener=true;
+    labourDoc.onSnapshot(syncLabourerVisibilityFromCloud, e=>console.error('BMJ visibility sync error:',e));
+  }
+  // Start after Firebase setup; retry on login/setup because Firebase may load later.
+  const priorSetup=window.setupInterface;
+  window.setupInterface=function(){
+    const result=typeof priorSetup==='function' ? priorSetup.apply(this,arguments) : undefined;
+    startVisibilityListener();
+    return result;
+  };
+  document.addEventListener('DOMContentLoaded',()=>setTimeout(startVisibilityListener,500));
+  // Explicitly ensure the field attendance list excludes hidden labourers.
+  const priorDaily=window.loadDailyAttendance;
+  window.loadDailyAttendance=function(){
+    if(!currentUser || currentUser.role==='Admin') return priorDaily.apply(this,arguments);
+    const original=labourers;
+    try {
+      labourers=original.filter(w=>!hidden(w));
+      return priorDaily.apply(this,arguments);
+    } finally { labourers=original; }
+  };
+})();
+</script>
+
 </body>
 </html>
