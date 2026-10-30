@@ -3699,9 +3699,17 @@ SAVE ATTENDANCE
 ========================================================= */
 
 function sameDayTotalForWorker(workerId,date){
-    return recordsForWorkerDate(workerId,date).reduce(
-        (sum,r)=>sum+Number(r.dutyCount||duty(r.status)||0),0
-    );
+    const statusDays={P:1,A:0,HD:0.5,"P1/2":1.5,PP:2,PPP:3};
+    return recordsForWorkerDate(workerId,date).reduce((sum,r)=>{
+        const raw=r?.dutyCount;
+        let days=typeof raw==='number'?raw:Number(raw);
+        if(!Number.isFinite(days)){
+            const match=String(raw??'').match(/[0-9]+(?:\.[0-9]+)?/);
+            days=match?Number(match[0]):Number(statusDays[r?.status]??0);
+        }
+        if(!Number.isFinite(days))days=Number(statusDays[r?.status]??0);
+        return sum+days;
+    },0);
 }
 
 function saveAttendance(id){
@@ -8029,7 +8037,7 @@ async function downloadWeeklyPNG(){
 
 <script>
 /* =========================================================
- BMJ ATTENDANCE V25 PATCH
+ BMJ ATTENDANCE V25 PATCH (V33 SAVE RELIABILITY CORRECTIONS)
  - Admin controls past/future attendance dates; today is auto-enabled
  - Admin Hide/Show labourers without deleting history
  - Transaction-based attendance saves to avoid concurrent array overwrite
@@ -8232,20 +8240,24 @@ async function downloadWeeklyPNG(){
 
   // Transactionally merge each worker/date/site record into the latest cloud array.
   // This prevents concurrent field users from overwriting each other's whole-array writes.
+  const bmjAttendanceSaveLocks = window.__bmjAttendanceSaveLocks || (window.__bmjAttendanceSaveLocks = new Set());
   window.saveAttendance=async function(id){
     if(!currentUser)return;
     const date=document.getElementById('attendanceDate')?.value||v25Today();
     const site=currentUser.role==='Admin' ? document.getElementById('attendanceSite')?.value : (currentUser.site||document.getElementById('supervisorSite')?.value);
     if(!site||site==='Select Site')return alert('Select working site first.');
     if(currentUser.role!=='Admin' && (!dateControlsReady||!v25DateAllowed(date)))return alert('Attendance for this date is disabled by Admin.');
-    const status=document.getElementById('status-'+id)?.value;
-    if(!status)return alert('Select attendance status before saving.');
+    const select=document.getElementById('status-'+id);
+    if(!select)return;
+    const status=String(select.value||'').trim();
     if(!cloudReady)return alert('Firebase is not connected yet. Please wait for the connection and retry.');
+    const saveKey=[String(id),date,String(site)].join('::');
+    if(bmjAttendanceSaveLocks.has(saveKey))return;
+    bmjAttendanceSaveLocks.add(saveKey);
     const worker=labourers.find(w=>String(w.id)===String(id));
-    if(!worker)return alert('Labourer not found. Refresh the page and retry.');
-    const now=new Date();
-    const record={workerId:id,date,site,inCharge:currentUser.role==='Admin'?'Admin':(currentUser.name||currentUser.role),takenBy:currentUser.role==='Admin'?'Admin':currentUser.role,takenByUsername:currentUser.username,takenAt:now.toISOString(),status,inTime:document.getElementById('in-'+id)?.value||'',outTime:document.getElementById('out-'+id)?.value||'',dutyCount:duty(status),ot:Number(document.getElementById('ot-'+id)?.value||0),updatedBy:currentUser.username,updatedAt:Date.now()};
-    const btn=document.getElementById('status-'+id)?.closest('tr')?.querySelector('button');
+    if(!worker){bmjAttendanceSaveLocks.delete(saveKey);return alert('Labourer not found. Refresh the page and retry.');}
+    const row=select.closest('tr');
+    const btn=row?.querySelector('button');
     if(btn){btn.dataset.v25Saving='1';btn.disabled=true;btn.textContent='Saving…';}
     try{
       let merged=[];
@@ -8254,28 +8266,39 @@ async function downloadWeeklyPNG(){
         const cloudItems=snap.exists&&Array.isArray(snap.data().items)?snap.data().items:[];
         merged=cloudItems.slice();
         const idx=merged.findIndex(r=>String(r.workerId)===String(id)&&r.date===date&&r.site===site);
-        if(idx>=0) merged[idx]={...merged[idx],...record}; else merged.push(record);
+        if(!status){
+          // Select means remove only this worker/date/site attendance row.
+          // Keep every other date, site, worker, and historical record untouched.
+          if(idx>=0)merged.splice(idx,1);
+        }else{
+          const now=new Date();
+          const record={workerId:id,date,site,inCharge:currentUser.role==='Admin'?'Admin':(currentUser.name||currentUser.role),takenBy:currentUser.role==='Admin'?'Admin':currentUser.role,takenByUsername:currentUser.username,takenAt:now.toISOString(),status,inTime:document.getElementById('in-'+id)?.value||'',outTime:document.getElementById('out-'+id)?.value||'',dutyCount:({P:1,A:0,HD:0.5,'P1/2':1.5,PP:2,PPP:3}[status]??0),ot:Number(document.getElementById('ot-'+id)?.value||0),updatedBy:currentUser.username,updatedAt:Date.now()};
+          if(idx>=0)merged[idx]={...merged[idx],...record};else merged.push(record);
+        }
         tx.set(attendanceDoc,{items:merged,updatedAt:firebase.firestore.FieldValue.serverTimestamp()},{merge:true});
       });
       attendance=merged;
       localStorage.setItem(ATT_KEY,JSON.stringify(attendance));
-      delete bmjDailyDraftStatus[id];
-      updateAll();
-      if(typeof renderDateControls==='function')renderDateControls();
-      const freshBtn=document.getElementById('status-'+id)?.closest('tr')?.querySelector('button');
-      if(freshBtn){freshBtn.textContent='Saved';freshBtn.className='blue';freshBtn.disabled=false;}
-      const workerNow=labourers.find(w=>String(w.id)===String(id));
+      if(typeof bmjDailyDraftStatus!=='undefined')delete bmjDailyDraftStatus[id];
+      if(btn){btn.textContent=status?'Saved':'Cleared';btn.className=status?'blue':'green';btn.disabled=false;}
+      // Refresh read-only attendance views without rebuilding the field entry form.
+      if(typeof renderWorkedAttendance==='function')renderWorkedAttendance();
+      if(typeof renderMasterTable==='function'&&currentUser.role==='Admin')renderMasterTable();
+      if(typeof updateDashboard==='function'&&currentUser.role==='Admin')updateDashboard();
       const notice=document.getElementById('sameDayAttendanceNotice');
-      if(notice&&workerNow&&currentUser.role!=='Admin'){
-        const total=typeof sameDayTotalForWorker==='function'?sameDayTotalForWorker(id,date):'';
-        notice.textContent=`${workerNow.name}: ${site} saved successfully. Total for this date = ${total} Day(s).`;
+      if(notice&&currentUser.role!=='Admin'){
+        const total=sameDayTotalForWorker(id,date);
+        notice.textContent=status?`${worker.name}: ${site} saved successfully. Total for this date = ${total} Day(s).`:`${worker.name}: ${site} attendance cleared successfully.`;
         notice.style.display='block';
       }
     }catch(e){
-      console.error('BMJ attendance save failed:',e);
+      console.error('BMJ attendance save/clear failed:',e);
       if(btn){btn.textContent='Save Failed — Retry';btn.className='red';btn.disabled=false;}
-      alert('Attendance was NOT confirmed saved. Please check internet and click Save Failed — Retry. Error: '+(e.message||e));
-    }finally{ if(btn)delete btn.dataset.v25Saving; }
+      alert('Attendance was NOT confirmed saved. Please check internet and retry. Error: '+(e.message||e));
+    }finally{
+      if(btn)delete btn.dataset.v25Saving;
+      bmjAttendanceSaveLocks.delete(saveKey);
+    }
   };
 
   // Decorate the rendered rows with truthful save state and date locks.
